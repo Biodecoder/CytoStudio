@@ -44,6 +44,7 @@ const state = {
     { id: "p4", title: "UMAP Overlay", type: "umap", x: "umap1", y: "umap2", population: "live", scaleX: "linear", scaleY: "linear", transformX: defaultTransformSettings(), transformY: defaultTransformSettings(), zoom: 1 }
   ],
   gates: [
+    { id: "g0", plot: "p1", population: "singlets", type: "rectangle", label: "Singlets 85.8%", x1: 0.10, y1: 0.14, x2: 0.92, y2: 0.92 },
     { id: "g1", plot: "p1", population: "live", type: "polygon", label: "Cells 87.6%", points: [[0.18,0.82],[0.16,0.55],[0.28,0.30],[0.48,0.17],[0.76,0.18],[0.85,0.43],[0.78,0.78],[0.40,0.88]] },
     { id: "g2", plot: "p2", population: "cd4", type: "quadrant", label: "CD4+ 55.3%", x: 0.58, y: 0.50 },
     { id: "g3", plot: "p3", population: "cd3", type: "interval", label: "CD3+ 44.7%", x1: 0.62, x2: 0.88 }
@@ -140,6 +141,13 @@ function populationCount(popOrId) {
   return sample?.populationCounts?.[pop.id] ?? pop.count;
 }
 
+function setPopulationCount(popOrId, count) {
+  const pop = typeof popOrId === "string" ? population(popOrId) : popOrId;
+  const sample = selectedSample();
+  if (!sample.populationCounts) sample.populationCounts = {};
+  sample.populationCounts[pop.id] = Math.max(0, Math.round(count));
+}
+
 function plot(id) {
   return state.plots.find(p => p.id === id);
 }
@@ -147,6 +155,16 @@ function plot(id) {
 function activeEvents() {
   const sample = selectedSample();
   return sample?.parsedEvents?.length ? sample.parsedEvents : syntheticEvents;
+}
+
+function activeEventScale() {
+  const sample = selectedSample();
+  const events = activeEvents();
+  return events.length ? sample.events / events.length : 1;
+}
+
+function eventsForPlot(plotConfig) {
+  return sampleEventsForPopulation(plotConfig.population || state.selectedPopulation);
 }
 
 function transformValue(value, scale, options = {}) {
@@ -180,6 +198,7 @@ function saveLayout() {
 }
 
 function render() {
+  recomputePopulationCounts();
   document.getElementById("app").dataset.theme = state.theme;
   renderSamples();
   renderTree();
@@ -287,7 +306,13 @@ function plotCardHTML(p) {
 
 function gateSVG(plotId) {
   return state.gates.filter(g => g.plot === plotId).map(g => {
-    if (g.type === "polygon") {
+    if (g.type === "rectangle") {
+      return `<rect class="gate-shape" x="${g.x1 * 100}%" y="${g.y1 * 100}%" width="${(g.x2 - g.x1) * 100}%" height="${(g.y2 - g.y1) * 100}%"></rect><text class="gate-label" x="${(g.x1 + 0.02) * 100}%" y="${(g.y1 + 0.08) * 100}%">${g.label}</text>`;
+    }
+    if (g.type === "ellipse") {
+      return `<ellipse class="gate-shape" cx="${g.cx * 100}%" cy="${g.cy * 100}%" rx="${g.rx * 100}%" ry="${g.ry * 100}%"></ellipse><text class="gate-label" x="${(g.cx - g.rx * 0.5) * 100}%" y="${g.cy * 100}%">${g.label}</text>`;
+    }
+    if (g.type === "polygon" || g.type === "lasso") {
       const pts = g.points.map(p => `${p[0] * 100},${p[1] * 100}`).join(" ");
       return `<polygon class="gate-shape" points="${pts}" vector-effect="non-scaling-stroke"></polygon><text class="gate-label" x="22%" y="32%">${g.label}</text>`;
     }
@@ -400,7 +425,7 @@ function drawHistogram(ctx, width, height, pad, p) {
   const plotW = width - pad.l - pad.r;
   const plotH = height - pad.t - pad.b;
   const xParam = param(p.x);
-  const primary = histogramBins(activeEvents(), p.x, xParam, p.scaleX, axisTransformOptions(p, "x"), 72);
+  const primary = histogramBins(eventsForPlot(p), p.x, xParam, p.scaleX, axisTransformOptions(p, "x"), 72);
   const overlays = [
     { bins: primary, color: colors[1], alpha: 0.54, label: "active" },
     { bins: smoothBins(primary, 0.63, 5), color: colors[2], alpha: 0.34, label: "FMO" },
@@ -449,6 +474,78 @@ function smoothBins(source, scale = 1, shift = 0) {
     const current = source[shifted] || 0;
     const next = source[Math.min(source.length - 1, shifted + 1)] || 0;
     return ((prev + current * 2 + next) / 4) * scale;
+  });
+}
+
+function gateForPopulation(populationId) {
+  return state.gates.find(gate => gate.population === populationId);
+}
+
+function eventScreenPoint(event, plotConfig) {
+  const xParam = param(plotConfig.x);
+  const yParam = plotConfig.y ? param(plotConfig.y) : null;
+  const nx = normalize(event[plotConfig.x], xParam, plotConfig.scaleX, axisTransformOptions(plotConfig, "x"));
+  const ny = yParam ? normalize(event[plotConfig.y], yParam, plotConfig.scaleY, axisTransformOptions(plotConfig, "y")) : 0;
+  return { x: nx, y: 1 - ny };
+}
+
+function eventPassesGate(event, gate) {
+  const plotConfig = plot(gate.plot);
+  if (!plotConfig) return true;
+  const point = eventScreenPoint(event, plotConfig);
+  if (gate.type === "rectangle") return point.x >= gate.x1 && point.x <= gate.x2 && point.y >= gate.y1 && point.y <= gate.y2;
+  if (gate.type === "ellipse") {
+    const dx = (point.x - gate.cx) / Math.max(gate.rx, 0.001);
+    const dy = (point.y - gate.cy) / Math.max(gate.ry, 0.001);
+    return dx * dx + dy * dy <= 1;
+  }
+  if (gate.type === "interval") return point.x >= gate.x1 && point.x <= gate.x2;
+  if (gate.type === "quadrant") return point.x >= gate.x && point.y >= gate.y;
+  if (gate.type === "polygon" || gate.type === "lasso") return pointInPolygon(point, gate.points);
+  return true;
+}
+
+function pointInPolygon(point, vertices = []) {
+  let inside = false;
+  for (let i = 0, j = vertices.length - 1; i < vertices.length; j = i++) {
+    const xi = vertices[i][0], yi = vertices[i][1];
+    const xj = vertices[j][0], yj = vertices[j][1];
+    const intersects = ((yi > point.y) !== (yj > point.y)) && (point.x < ((xj - xi) * (point.y - yi)) / (yj - yi || 1e-9) + xi);
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
+function sampleEventsForPopulation(populationId, memo = new Map()) {
+  if (memo.has(populationId)) return memo.get(populationId);
+  const pop = population(populationId);
+  if (!pop) return [];
+  const parentEvents = pop.parent ? sampleEventsForPopulation(pop.parent, memo) : activeEvents();
+  const gate = gateForPopulation(populationId);
+  const events = gate ? parentEvents.filter(event => eventPassesGate(event, gate)) : parentEvents;
+  memo.set(populationId, events);
+  return events;
+}
+
+function recomputePopulationCounts() {
+  const sample = selectedSample();
+  if (!sample) return;
+  const scale = activeEventScale();
+  const memo = new Map();
+  state.populations.forEach(pop => {
+    const events = sampleEventsForPopulation(pop.id, memo);
+    sample.populationCounts = sample.populationCounts || {};
+    sample.populationCounts[pop.id] = Math.round(events.length * scale);
+  });
+  refreshGateLabels();
+}
+
+function refreshGateLabels() {
+  state.gates.forEach(gate => {
+    const pop = population(gate.population);
+    const parent = pop?.parent ? population(pop.parent) : population("all");
+    if (!pop || !parent) return;
+    gate.label = `${pop.name} ${pct(populationCount(pop), populationCount(parent))}`;
   });
 }
 
@@ -664,17 +761,26 @@ function createGate() {
     parent: parent.id,
     name: `${type[0].toUpperCase()}${type.slice(1)} Gate`,
     color: colors[state.populations.length % colors.length],
-    count: Math.floor(populationCount(parent) * (0.18 + rand(Date.now()) * 0.28)),
+    count: 0,
     gate: type
   };
   state.populations.push(newPop);
   state.selectedPopulation = id;
-  if (type === "quadrant") state.gates.push({ id: `g${Date.now()}`, plot: p.id, population: id, type, label: `${newPop.name} ${pct(newPop.count, populationCount(parent))}`, x: 0.52, y: 0.48 });
-  else if (type === "interval") state.gates.push({ id: `g${Date.now()}`, plot: p.id, population: id, type, label: `${newPop.name} ${pct(newPop.count, populationCount(parent))}`, x1: 0.46, x2: 0.72 });
-  else state.gates.push({ id: `g${Date.now()}`, plot: p.id, population: id, type: "polygon", label: `${newPop.name} ${pct(newPop.count, populationCount(parent))}`, points: [[0.28,0.72],[0.34,0.42],[0.58,0.30],[0.74,0.52],[0.66,0.78]] });
+  state.gates.push(buildGateForType(type, p.id, id));
+  recomputePopulationCounts();
   addHistory(`Created ${type} gate and live-linked child population`);
   toast("Gate created; hierarchy, plots, and stats updated");
   render();
+}
+
+function buildGateForType(type, plotId, populationId) {
+  const base = { id: `g${Date.now()}`, plot: plotId, population: populationId, type, label: "" };
+  if (type === "rectangle") return { ...base, x1: 0.32, y1: 0.32, x2: 0.72, y2: 0.72 };
+  if (type === "ellipse") return { ...base, cx: 0.54, cy: 0.52, rx: 0.22, ry: 0.18 };
+  if (type === "quadrant") return { ...base, x: 0.52, y: 0.48 };
+  if (type === "interval") return { ...base, x1: 0.46, x2: 0.72 };
+  if (type === "lasso") return { ...base, points: [[0.26,0.70],[0.32,0.44],[0.50,0.30],[0.72,0.42],[0.74,0.66],[0.56,0.78],[0.34,0.76]] };
+  return { ...base, type: "polygon", points: [[0.28,0.72],[0.34,0.42],[0.58,0.30],[0.74,0.52],[0.66,0.78]] };
 }
 
 async function importFiles(files) {

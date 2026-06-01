@@ -19,6 +19,7 @@ Then visit `http://localhost:5178`.
 - Synthetic cytometry event model with scatter, density, histogram, and UMAP-style plot tiles drawn on canvas.
 - Local FCS 3.0/3.1 parser for standard list-mode numeric files, including header/TEXT parsing, keywords, parameter labels, common integer/float event payloads, and tested fixture coverage.
 - Manual gate tool selection, gate creation, gate hierarchy, boolean-gate scaffold, backgating/live-linking messaging, and live statistics.
+- Gate geometry evaluation for rectangle, polygon/lasso, ellipse, quadrant, and histogram interval gates, with recursive parent-to-child population counts based on active sample events.
 - Shared axis transform module for linear, log, logicle-like, and arcsinh transforms, with inspector controls for log floor, logicle width, and arcsinh cofactor.
 - Histograms now bin active event data through the selected axis transform instead of drawing fixed placeholder curves.
 - Statistics table, CSV export, compensation matrix, spillover QC grid, spectral unmixing scaffold, high-dimensional cluster explorer scaffold, figure layout, reproducible pipeline view, workspace sharing surface, onboarding-ready empty/import states, and gated clinical-mode concept.
@@ -41,7 +42,7 @@ These areas are represented in the UI and state model but should not be treated 
 
 - Complete FCS edge-case coverage, memory mapping, and raw spectral vendor formats.
 - Reference-validated biexponential/logicle parity with `flowCore` and canonical tick semantics.
-- Million-event GPU/datashader rendering guarantees.
+- Million-event GPU/datashader rendering guarantees and optimized incremental gate recomputation.
 - Automated compensation from single-stain controls.
 - NNLS spectral unmixing on real raw spectra.
 - UMAP/t-SNE/FlowSOM numerical algorithms and reproducibility tests.
