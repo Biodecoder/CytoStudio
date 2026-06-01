@@ -30,6 +30,7 @@ Then visit `http://localhost:5178`.
 - High-dimensional analysis can run a sampled reproducible UMAP/t-SNE-style embedding, assign FlowSOM/graph-style clusters, color by marker, inspect a cluster heatmap, compare samples, and backgate a selected cluster into the population tree.
 - Figure layout editor supports live linked plot tiles, labels, arrows, inset plots, snapping/alignment controls, appearance controls, template saving, and browser-native export proofs.
 - Pipeline view supports timeline stepping, replay recording, report proof generation, pipeline JSON, gated FCS proof, event CSV/Parquet proof, statistics Excel-compatible export, and GatingML proof export.
+- Workspace sharing view saves raw-data-referencing workspace JSON, autosaves recovery state, exports share packages, records audit/change logs, and provides GatingML/FlowJo/Cytobank import proof actions.
 
 ## Architecture choice
 
@@ -57,6 +58,7 @@ These areas are represented in the UI and state model but should not be treated 
 - Validated UMAP/t-SNE/FlowSOM numerical algorithms, graph community detection, worker-backed execution, and reproducibility tests.
 - High-fidelity PDF/TIFF/vector export, full drag-resize handles, print color management, and per-plot export packaging.
 - Validated PDF generation, binary FCS writing, Parquet/Excel writers, GatingML conformance, and FlowJo / Cytobank round-trip interoperability.
+- Robust native open/save dialogs, file locks, conflict resolution, real shared-location sync, and production FlowJo/Cytobank migration tooling.
 - 21 CFR Part 11 or clinical compliance.
 
 ## Original blueprint package
