@@ -65,6 +65,68 @@ function buildFixture() {
   return buffer;
 }
 
+function buildIntegerByteOrderFixture() {
+  const rows = [
+    [7, 300, 70000],
+    [8, 400, 90000]
+  ];
+  const bits = [8, 16, 32];
+  const dataBytes = rows.length * bits.reduce((sum, bitCount) => sum + bitCount / 8, 0);
+  let text = "";
+  let header = "";
+  let dataStart = 0;
+  let dataEnd = 0;
+
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const pairs = [
+      ["$BEGINANALYSIS", "0"],
+      ["$ENDANALYSIS", "0"],
+      ["$BEGINSTEXT", "0"],
+      ["$ENDSTEXT", "0"],
+      ["$BEGINDATA", String(dataStart)],
+      ["$ENDDATA", String(dataEnd)],
+      ["$BYTEORD", "4,3,2,1"],
+      ["$DATATYPE", "I"],
+      ["$MODE", "L"],
+      ["$NEXTDATA", "0"],
+      ["$PAR", "3"],
+      ["$TOT", String(rows.length)],
+      ["$CYT", "Integer Fixture"],
+      ["$P1N", "FLAG-A"],
+      ["$P1B", "8"],
+      ["$P1R", "255"],
+      ["$P2N", "MID-A"],
+      ["$P2B", "16"],
+      ["$P2R", "65535"],
+      ["$P3N", "WIDE-A"],
+      ["$P3B", "32"],
+      ["$P3R", "1000000"]
+    ];
+    text = "|" + pairs.flat().join("|") + "|";
+    const textStart = 58;
+    const textEnd = textStart + text.length - 1;
+    dataStart = textEnd + 1;
+    dataEnd = dataStart + dataBytes - 1;
+    header = `FCS3.1    ${pad(textStart, 8)}${pad(textEnd, 8)}${pad(dataStart, 8)}${pad(dataEnd, 8)}${pad(0, 8)}${pad(0, 8)}`;
+  }
+
+  const buffer = new ArrayBuffer(dataEnd + 1);
+  const bytes = new Uint8Array(buffer);
+  bytes.set(Buffer.from(header, "ascii"), 0);
+  bytes.set(Buffer.from(text, "ascii"), 58);
+  const view = new DataView(buffer, dataStart);
+  let offset = 0;
+  rows.forEach(row => {
+    view.setUint8(offset, row[0]);
+    offset += 1;
+    view.setUint16(offset, row[1], false);
+    offset += 2;
+    view.setUint32(offset, row[2], false);
+    offset += 4;
+  });
+  return buffer;
+}
+
 const escaped = parseTextSegment("/$P1N/FSC-A/$P1S/CD3//APC/");
 assert.equal(escaped.$P1N, "FSC-A");
 assert.equal(escaped.$P1S, "CD3/APC");
@@ -84,6 +146,18 @@ assert.equal(parsed.events[2].cd3_apc, 125);
 const limited = parseFCS(buildFixture(), { maxEvents: 2 });
 assert.equal(limited.parsedEventCount, 2);
 assert.equal(limited.events.length, 2);
+
+const integerParsed = parseFCS(buildIntegerByteOrderFixture());
+assert.equal(integerParsed.metadata.instrument, "Integer Fixture");
+assert.equal(integerParsed.parameters[0].bits, 8);
+assert.equal(integerParsed.parameters[1].bits, 16);
+assert.equal(integerParsed.parameters[2].bits, 32);
+assert.equal(integerParsed.events[0].flag_a, 7);
+assert.equal(integerParsed.events[0].mid_a, 300);
+assert.equal(integerParsed.events[0].wide_a, 70000);
+assert.equal(integerParsed.events[1].flag_a, 8);
+assert.equal(integerParsed.events[1].mid_a, 400);
+assert.equal(integerParsed.events[1].wide_a, 90000);
 
 assert.equal(transforms.linear(-12), -12);
 assert.equal(transforms.log(1000), 3);

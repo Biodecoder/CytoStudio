@@ -17,7 +17,7 @@ Then visit `http://localhost:5178`.
 - Three-pane macOS-style workspace with toolbar, sample rail, population hierarchy, canvas, inspector, and status bar.
 - Dark/light appearance toggle, Command-K palette, keyboard shortcuts, drag-drop import scaffold, and persisted appearance state.
 - Synthetic cytometry event model with scatter, density, histogram, and UMAP-style plot tiles drawn on canvas.
-- Local FCS 3.0/3.1 parser for standard list-mode numeric files, including header/TEXT parsing, keywords, parameter labels, common integer/float event payloads, and tested fixture coverage.
+- Local FCS 3.0/3.1 parser for standard list-mode numeric files, including header/TEXT parsing, keywords, parameter labels, common integer/float event payloads, spillover, escaped delimiters, max-event limits, big-endian integer fixtures, and tested fixture coverage.
 - Worker-backed FCS import path parses dropped files off the UI thread when served locally, with visible progress, cancellation, and direct parser fallback for constrained contexts.
 - Manual gate tool selection, gate creation, gate hierarchy, boolean-gate scaffold, backgating/live-linking messaging, and live statistics.
 - Gate geometry evaluation for rectangle, polygon/lasso, ellipse, quadrant, and histogram interval gates, with recursive parent-to-child population counts based on active sample events.
