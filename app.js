@@ -101,6 +101,7 @@ const state = {
     seed: 42,
     progress: 0,
     status: "idle",
+    execution: "idle",
     selectedCluster: 0,
     result: null
   },
@@ -205,6 +206,7 @@ const state = {
 
 let syntheticEvents = [];
 let highDimTimer = null;
+let activeHighDimWorker = null;
 let activeImportWorker = null;
 let activeImportReject = null;
 let activeGateDrag = null;
@@ -1562,7 +1564,7 @@ function highDimSurface() {
     return `<button class="cluster-row ${active ? "active" : ""}" data-action="select-cluster" data-cluster="${cluster.id}"><span><span class="swatch" style="background:${colors[cluster.id % colors.length]}"></span>Cluster ${cluster.id + 1}</span><strong>${fmt(cluster.count)}</strong><em>${cluster.phenotype}</em></button>`;
   }).join("") || `<div class="empty-note">Run analysis to populate clusters.</div>`;
   return `<div class="surface"><div class="surface-grid">
-    <div class="surface-card"><h3>UMAP / t-SNE / FlowSOM Explorer</h3><p>Run sampled, reproducible embeddings on a selected population with parameter inclusion, marker coloring, progress, cancellation, and cluster backgating.</p><div class="highdim-controls"><label class="field"><span>Embedding</span><select data-highdim-field="method"><option ${hd.method === "UMAP" ? "selected" : ""}>UMAP</option><option ${hd.method === "t-SNE" ? "selected" : ""}>t-SNE</option></select></label><label class="field"><span>Clustering</span><select data-highdim-field="clusterer"><option ${hd.clusterer === "FlowSOM" ? "selected" : ""}>FlowSOM</option><option ${hd.clusterer === "Graph" ? "selected" : ""}>Graph</option></select></label><label class="field"><span>Population</span><select data-highdim-field="population">${state.populations.map(pop => `<option value="${pop.id}" ${hd.population === pop.id ? "selected" : ""}>${pop.name}</option>`).join("")}</select></label><label class="field"><span>Color by</span><select data-highdim-field="colorBy">${parameters.filter(parameter => !parameter.id.startsWith("umap")).map(parameter => `<option value="${parameter.id}" ${hd.colorBy === parameter.id ? "selected" : ""}>${parameter.label}</option>`).join("")}</select></label></div><div class="parameter-picks">${parameters.filter(parameter => /cd|unmixed/i.test(parameter.id)).map(parameter => `<label><input type="checkbox" data-highdim-param="${parameter.id}" ${hd.parameters.includes(parameter.id) ? "checked" : ""}> ${parameter.label}</label>`).join("")}</div><div class="progress-track"><span style="width:${hd.progress}%"></span></div><div class="button-row"><button class="primary" data-action="run-umap">Run ${hd.method}</button><button class="secondary" data-action="cancel-highdim">Cancel</button><button class="secondary" data-action="gate-cluster">Gate cluster</button><button class="secondary" data-action="compare-embeddings">Compare samples</button></div><div class="pipeline-list"><div class="pipeline-item"><span>Status</span><strong>${hd.status}</strong></div><div class="pipeline-item"><span>Seed</span><strong>${hd.seed}</strong></div><div class="pipeline-item"><span>Events sampled</span><strong>${result ? fmt(result.points.length) : "not run"}</strong></div></div></div>
+    <div class="surface-card"><h3>UMAP / t-SNE / FlowSOM Explorer</h3><p>Run sampled, reproducible embeddings on a selected population with parameter inclusion, marker coloring, progress, cancellation, and cluster backgating.</p><div class="highdim-controls"><label class="field"><span>Embedding</span><select data-highdim-field="method"><option ${hd.method === "UMAP" ? "selected" : ""}>UMAP</option><option ${hd.method === "t-SNE" ? "selected" : ""}>t-SNE</option></select></label><label class="field"><span>Clustering</span><select data-highdim-field="clusterer"><option ${hd.clusterer === "FlowSOM" ? "selected" : ""}>FlowSOM</option><option ${hd.clusterer === "Graph" ? "selected" : ""}>Graph</option></select></label><label class="field"><span>Population</span><select data-highdim-field="population">${state.populations.map(pop => `<option value="${pop.id}" ${hd.population === pop.id ? "selected" : ""}>${pop.name}</option>`).join("")}</select></label><label class="field"><span>Color by</span><select data-highdim-field="colorBy">${parameters.filter(parameter => !parameter.id.startsWith("umap")).map(parameter => `<option value="${parameter.id}" ${hd.colorBy === parameter.id ? "selected" : ""}>${parameter.label}</option>`).join("")}</select></label></div><div class="parameter-picks">${parameters.filter(parameter => /cd|unmixed/i.test(parameter.id)).map(parameter => `<label><input type="checkbox" data-highdim-param="${parameter.id}" ${hd.parameters.includes(parameter.id) ? "checked" : ""}> ${parameter.label}</label>`).join("")}</div><div class="progress-track"><span style="width:${hd.progress}%"></span></div><div class="button-row"><button class="primary" data-action="run-umap">Run ${hd.method}</button><button class="secondary" data-action="cancel-highdim">Cancel</button><button class="secondary" data-action="gate-cluster">Gate cluster</button><button class="secondary" data-action="compare-embeddings">Compare samples</button></div><div class="pipeline-list"><div class="pipeline-item"><span>Status</span><strong>${hd.status}</strong></div><div class="pipeline-item"><span>Execution</span><strong>${hd.execution}</strong></div><div class="pipeline-item"><span>Seed</span><strong>${hd.seed}</strong></div><div class="pipeline-item"><span>Events sampled</span><strong>${result ? fmt(result.points.length) : "not run"}</strong></div></div></div>
     <div class="surface-card"><h3>Embedding</h3><canvas data-surface-canvas="embedding" height="260"></canvas></div>
     <div class="surface-card"><h3>Cluster Explorer</h3><div class="cluster-list">${clusterRows}</div></div>
     <div class="surface-card"><h3>Cluster Heatmap</h3><canvas data-surface-canvas="heatmap" height="260"></canvas></div>
@@ -1594,6 +1596,27 @@ function computeHighDimResult(sample = selectedSample()) {
     return { id, count: Math.round(members.length * activeEventScale(sample)), means, phenotype: phenotype || "mixed" };
   });
   return { sample: sample.id, method: hd.method, clusterer: hd.clusterer, parameters: [...hd.parameters], points, clusters };
+}
+
+function highDimWorkerPayload(sample = selectedSample()) {
+  const events = sampleEventsForPopulation(state.highDim.population, new Map(), sample).slice(0, 1800).map(event => {
+    const packed = {};
+    Array.from(new Set([...state.highDim.parameters, state.highDim.colorBy])).forEach(id => packed[id] = event[id]);
+    return packed;
+  });
+  return {
+    sampleId: sample.id,
+    config: {
+      method: state.highDim.method,
+      clusterer: state.highDim.clusterer,
+      parameters: [...state.highDim.parameters],
+      colorBy: state.highDim.colorBy,
+      seed: state.highDim.seed,
+      scale: activeEventScale(sample)
+    },
+    parameterMeta: Object.fromEntries(parameters.map(parameter => [parameter.id, { range: parameter.range, scale: parameter.scale }])),
+    events
+  };
 }
 
 function figureSurface() {
@@ -2615,30 +2638,61 @@ function recomputeBatchStatistics() {
 
 function runHighDimAnalysis() {
   clearTimeout(highDimTimer);
+  activeHighDimWorker?.terminate();
+  activeHighDimWorker = null;
   state.highDim.status = "running";
-  state.highDim.progress = 22;
+  state.highDim.execution = "worker queued";
+  state.highDim.progress = 8;
   addHistory(`Started ${state.highDim.method} + ${state.highDim.clusterer} on ${population(state.highDim.population).name}`);
   render();
-  highDimTimer = setTimeout(() => {
-    state.highDim.progress = 100;
-    state.highDim.status = "complete";
-    state.highDim.result = computeHighDimResult();
-    const existing = plot("p4");
-    if (existing) {
-      existing.x = "umap1";
-      existing.y = "umap2";
-      existing.population = state.highDim.population;
-      existing.type = "umap";
+  if (window.Worker) {
+    try {
+      activeHighDimWorker = new Worker("highdim-worker.js");
+      activeHighDimWorker.onmessage = event => {
+        if (event.data.progress) {
+          state.highDim.progress = event.data.progress;
+          state.highDim.execution = event.data.phase || "worker running";
+          renderView();
+          return;
+        }
+        if (event.data.ok) finishHighDimResult(event.data.result, "worker");
+        else finishHighDimResult(computeHighDimResult(), "fallback");
+      };
+      activeHighDimWorker.onerror = () => finishHighDimResult(computeHighDimResult(), "fallback");
+      activeHighDimWorker.postMessage(highDimWorkerPayload());
+      return;
+    } catch (error) {
+      state.highDim.execution = "worker unavailable; local fallback";
     }
-    addHistory(`Completed reproducible ${state.highDim.method} run with ${state.highDim.result.clusters.length} ${state.highDim.clusterer} clusters`);
-    toast("Cluster explorer ready");
-    render();
-  }, 260);
+  }
+  highDimTimer = setTimeout(() => finishHighDimResult(computeHighDimResult(), "fallback"), 260);
+}
+
+function finishHighDimResult(result, execution = "worker") {
+  activeHighDimWorker?.terminate();
+  activeHighDimWorker = null;
+  state.highDim.progress = 100;
+  state.highDim.status = "complete";
+  state.highDim.execution = execution;
+  state.highDim.result = result;
+  const existing = plot("p4");
+  if (existing) {
+    existing.x = "umap1";
+    existing.y = "umap2";
+    existing.population = state.highDim.population;
+    existing.type = "umap";
+  }
+  addHistory(`Completed reproducible ${state.highDim.method} run with ${state.highDim.result.clusters.length} ${state.highDim.clusterer} clusters via ${execution}`);
+  toast("Cluster explorer ready");
+  render();
 }
 
 function cancelHighDimAnalysis() {
   clearTimeout(highDimTimer);
+  activeHighDimWorker?.terminate();
+  activeHighDimWorker = null;
   state.highDim.status = "cancelled";
+  state.highDim.execution = "cancelled";
   state.highDim.progress = 0;
   addHistory("Cancelled high-dimensional analysis run");
   toast("High-dimensional run cancelled");

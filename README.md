@@ -44,6 +44,7 @@ The blueprint recommends Tauri 2 plus a Rust/Arrow data core and optional Python
 - `app.js` application state, synthetic event generation, import wiring, plot drawing, gate hierarchy, and export behavior.
 - `fcs-core.js` FCS parsing and cytometry transform helpers, usable in both browser and Node tests.
 - `fcs-import-worker.js` worker adapter for off-main-thread FCS parsing.
+- `highdim-worker.js` worker adapter for off-main-thread sampled embedding and clustering runs.
 - `docs/fcs-large-file-strategy.md` explicit browser-prototype boundary and native memory-map handoff plan.
 - `tests/fixtures/public/flowWorkspaceData/manifest.json` provenance for the curated public FCS fixture from Bioconductor `flowWorkspaceData` (GPL-2).
 - `styles.css` app design system and responsive macOS-style layout.
@@ -63,7 +64,7 @@ These areas are represented in the UI and state model but should not be treated 
 - Validated compensation fitting from single-stain controls beyond the current reviewable proof workflow.
 - Validated NNLS spectral unmixing on real raw spectra and vendor-specific spectral imports.
 - Large-study batch recomputation beyond the current local proof workflow.
-- Validated UMAP/t-SNE/FlowSOM numerical algorithms, graph community detection, worker-backed execution, and reproducibility tests.
+- Validated UMAP/t-SNE/FlowSOM numerical algorithms and graph community detection beyond the current deterministic worker-backed approximation.
 - High-fidelity PDF/TIFF/vector export, full drag-resize handles, print color management, and per-plot export packaging.
 - Validated PDF generation, binary FCS writing, Parquet/Excel writers, GatingML conformance, and FlowJo / Cytobank round-trip interoperability.
 - Robust native open/save dialogs, file locks, conflict resolution, real shared-location sync, and production FlowJo/Cytobank migration tooling.
