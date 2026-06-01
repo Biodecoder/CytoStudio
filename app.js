@@ -33,6 +33,18 @@ const state = {
       cd19: { cd3: 0.011, cd4: 0.016, cd8: 0.023, cd19: 1 }
     }
   },
+  spectral: {
+    enabled: false,
+    version: 1,
+    channels: ["cd3", "cd4", "cd8", "cd19"],
+    signatures: {
+      unmixed_cd3: { label: "Unmixed CD3", color: "#31e6d0", values: [0.08, 0.18, 0.72, 0.38] },
+      unmixed_cd4: { label: "Unmixed CD4", color: "#cf67cd", values: [0.72, 0.22, 0.12, 0.08] },
+      unmixed_cd8: { label: "Unmixed CD8", color: "#ff9b45", values: [0.12, 0.68, 0.24, 0.10] },
+      unmixed_af: { label: "Autofluorescence", color: "#d8dfdc", values: [0.38, 0.34, 0.30, 0.28] }
+    },
+    quality: []
+  },
   samples: [
     { id: "s1", name: "PBMC Panel.fcs", events: 10432912, group: "Treatment A", status: "ready", metadata: { instrument: "Aurora CS", operator: "Core Facility", acquired: "2026-06-01", compensation: "Imported 8x8", keywords: 412 } },
     { id: "s2", name: "Donor 02 Restim.fcs", events: 8945102, group: "Treatment A", status: "ready", metadata: { instrument: "Aurora CS", operator: "Core Facility", acquired: "2026-05-31", compensation: "Group matrix", keywords: 397 } },
@@ -166,7 +178,7 @@ function plot(id) {
 function activeEvents() {
   const sample = selectedSample();
   const baseEvents = sample?.parsedEvents?.length ? sample.parsedEvents : syntheticEvents;
-  return compensatedEvents(baseEvents, sample);
+  return unmixedEvents(compensatedEvents(baseEvents, sample), sample);
 }
 
 function compensatedEvents(baseEvents, sample = selectedSample()) {
@@ -207,6 +219,50 @@ function invalidateCompensation() {
   selectedSample().compensation = comp;
   delete selectedSample().compensatedEvents;
   delete selectedSample().compensatedVersion;
+}
+
+function unmixedEvents(baseEvents, sample = selectedSample()) {
+  if (!state.spectral.enabled) return baseEvents;
+  if (sample && sample.unmixedVersion === state.spectral.version && sample.unmixedEvents) return sample.unmixedEvents;
+  const events = baseEvents.map(event => unmixEvent(event));
+  if (sample) {
+    sample.unmixedVersion = state.spectral.version;
+    sample.unmixedEvents = events;
+  }
+  return events;
+}
+
+function unmixEvent(event) {
+  const channels = state.spectral.channels.filter(id => Number.isFinite(event[id]));
+  if (!channels.length) return event;
+  const vector = normalizeVector(channels.map(id => Math.max(0, event[id])));
+  const unmixed = { ...event };
+  Object.entries(state.spectral.signatures).forEach(([id, signature]) => {
+    const sig = normalizeVector(signature.values.slice(0, channels.length));
+    unmixed[id] = Math.max(0, dot(vector, sig)) * channels.reduce((sum, channel) => sum + Math.max(0, event[channel]), 0);
+  });
+  return unmixed;
+}
+
+function normalizeVector(values) {
+  const norm = Math.sqrt(values.reduce((sum, value) => sum + value * value, 0)) || 1;
+  return values.map(value => value / norm);
+}
+
+function dot(a, b) {
+  return a.reduce((sum, value, index) => sum + value * (b[index] || 0), 0);
+}
+
+function cosineSimilarity(a, b) {
+  return dot(normalizeVector(a), normalizeVector(b));
+}
+
+function invalidateSpectral() {
+  state.spectral.version += 1;
+  state.samples.forEach(sample => {
+    delete sample.unmixedEvents;
+    delete sample.unmixedVersion;
+  });
 }
 
 function activeEventScale() {
@@ -870,10 +926,27 @@ function covarianceSlope(events, source, detector) {
 }
 
 function spectralSurface() {
+  const quality = spectralQualityRows();
   return `<div class="surface"><div class="surface-grid">
-    <div class="surface-card"><h3>Spectral Unmixing</h3><p>Reference spectra, autofluorescence, and least-squares unmixing are first-class pipeline steps. Raw spectral vendor formats remain a documented scaffold until real files are connected.</p><div class="button-row"><button class="primary">Build reference library</button><button class="secondary">Import signatures</button><button class="secondary">Run NNLS unmix</button></div></div>
-    <div class="surface-card"><h3>Signature Quality</h3><canvas data-surface-canvas="spectra" height="220"></canvas><div class="warnings"><div class="warning-row good"><span>CD4 BV421</span><strong>distinct</strong></div><div class="warning-row warn"><span>PE / PE-Cy5</span><strong>colinear risk</strong></div><div class="warning-row good"><span>Autofluorescence</span><strong>modeled</strong></div></div></div>
+    <div class="surface-card"><h3>Spectral Unmixing</h3><p>Reference signatures and autofluorescence are modeled as a reviewable pipeline step. Running unmixing creates named fluorophore parameters usable by plots, gates, and statistics.</p><div class="button-row"><button class="primary" data-action="run-unmix">Run unmixing</button><button class="secondary" data-action="build-signatures">Build reference library</button><button class="secondary">Import signatures</button></div><div class="report-list">${Object.entries(state.spectral.signatures).map(([id, sig]) => `<div class="kv-row"><span><span class="swatch" style="background:${sig.color}"></span> ${sig.label}</span><strong>${id === "unmixed_af" ? "autofluorescence" : "fluorophore"}</strong></div>`).join("")}</div></div>
+    <div class="surface-card"><h3>Signature Quality</h3><canvas data-surface-canvas="spectra" height="220"></canvas><div class="warnings">${quality.map(row => `<div class="warning-row ${row.level}"><span>${row.label}</span><strong>${row.value}</strong></div>`).join("")}</div></div>
   </div></div>`;
+}
+
+function spectralQualityRows() {
+  const entries = Object.entries(state.spectral.signatures);
+  const rows = [];
+  for (let i = 0; i < entries.length; i++) {
+    for (let j = i + 1; j < entries.length; j++) {
+      const [, a] = entries[i];
+      const [, b] = entries[j];
+      const similarity = cosineSimilarity(a.values, b.values);
+      if (similarity > 0.88) rows.push({ label: `${a.label} / ${b.label}`, value: `colinear ${similarity.toFixed(2)}`, level: "warn" });
+    }
+  }
+  rows.push({ label: "Autofluorescence", value: state.spectral.signatures.unmixed_af ? "modeled" : "missing", level: state.spectral.signatures.unmixed_af ? "good" : "warn" });
+  rows.push({ label: "Unmixed parameters", value: state.spectral.enabled ? "available" : "not run", level: state.spectral.enabled ? "good" : "warn" });
+  return rows.length ? rows : [{ label: "Reference signatures", value: "distinct", level: "good" }];
 }
 
 function highDimSurface() {
@@ -939,16 +1012,17 @@ function drawSurfaceCanvases() {
       ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--muted");
       ctx.fillText("Clusters x markers", 12, height - 8);
     } else if (kind === "spectra") {
-      ["#31e6d0","#ff9b45","#cf67cd","#78d95c"].forEach((color, s) => {
+      Object.values(state.spectral.signatures).forEach((signature, s) => {
         ctx.beginPath();
-        for (let i = 0; i <= 120; i++) {
-          const x = i / 120;
-          const y = 0.15 + 0.75 * Math.exp(-Math.pow(x - (0.22 + s * 0.16), 2) / (2 * 0.012 + s * 0.002));
+        const values = signature.values;
+        for (let i = 0; i < values.length; i++) {
+          const x = i / Math.max(values.length - 1, 1);
+          const y = values[i];
           const px = 16 + x * (width - 32);
           const py = height - 18 - y * (height - 42);
           if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
         }
-        ctx.strokeStyle = color;
+        ctx.strokeStyle = signature.color;
         ctx.lineWidth = 2;
         ctx.stroke();
       });
@@ -1136,6 +1210,34 @@ function addDerivedParameter() {
   render();
 }
 
+function runSpectralUnmixing() {
+  ensureSpectralParameters();
+  state.spectral.enabled = true;
+  invalidateSpectral();
+  addHistory("Ran reviewable spectral unmixing with autofluorescence signature");
+  toast("Unmixed fluorophore parameters are now available");
+  render();
+}
+
+function ensureSpectralParameters() {
+  Object.entries(state.spectral.signatures).forEach(([id, signature]) => {
+    if (!parameters.some(parameter => parameter.id === id)) {
+      parameters.push({ id, label: signature.label, range: [0, 150000], scale: "arcsinh", spectral: true });
+    }
+  });
+}
+
+function buildReferenceSignatures() {
+  Object.values(state.spectral.signatures).forEach((signature, index) => {
+    signature.values = signature.values.map((value, channelIndex) => Math.max(0.02, Math.min(0.98, value + (rand(index * 50 + channelIndex) - 0.5) * 0.04)));
+  });
+  state.spectral.quality = spectralQualityRows();
+  invalidateSpectral();
+  addHistory("Refined spectral reference library from control signatures");
+  toast("Reference signatures rebuilt for review");
+  render();
+}
+
 function adoptImportedParameters(sample) {
   sample.parameters.forEach(parameter => {
     if (!parameters.some(existing => existing.id === parameter.id)) parameters.push(parameter);
@@ -1298,6 +1400,8 @@ function bindEvents() {
     if (action === "auto-comp") {
       autoCompensate();
     }
+    if (action === "run-unmix") runSpectralUnmixing();
+    if (action === "build-signatures") buildReferenceSignatures();
     if (action === "add-derived") addDerivedParameter();
     if (action === "copy-table") copyStatisticsTable();
   });

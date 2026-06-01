@@ -25,6 +25,7 @@ Then visit `http://localhost:5178`.
 - Statistics table, CSV export, compensation matrix, spillover QC grid, spectral unmixing scaffold, high-dimensional cluster explorer scaffold, figure layout, reproducible pipeline view, workspace sharing surface, onboarding-ready empty/import states, and gated clinical-mode concept.
 - Live population statistics include count, % parent, % total, median, mean, geometric mean, robust CV, percentiles, CSV export, clipboard copy, and a CD4/CD8 derived-parameter workflow.
 - Compensation matrix edits apply to the active event stream, redraw plots/statistics, parse embedded spillover keywords when present, and drive the N-by-N spillover QC grid.
+- Spectral reference signatures, autofluorescence modeling, quality warnings, and reviewable unmixing create named fluorophore parameters for plots and statistics.
 
 ## Architecture choice
 
@@ -47,7 +48,7 @@ These areas are represented in the UI and state model but should not be treated 
 - Million-event GPU/datashader rendering guarantees and optimized incremental gate recomputation.
 - Full drag-and-drop table-builder UX, samples-as-rows pivoting, and native Excel export.
 - Validated compensation fitting from single-stain controls and per-group/per-sample matrix assignment workflows.
-- NNLS spectral unmixing on real raw spectra.
+- Validated NNLS spectral unmixing on real raw spectra and vendor-specific spectral imports.
 - UMAP/t-SNE/FlowSOM numerical algorithms and reproducibility tests.
 - GatingML / FlowJo / Cytobank round-trip interoperability.
 - 21 CFR Part 11 or clinical compliance.
