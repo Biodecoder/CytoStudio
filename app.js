@@ -38,10 +38,10 @@ const state = {
     { id: "nk", parent: "live", name: "NK Cells", color: "#ffd45a", count: 384671, gate: "ellipse" }
   ],
   plots: [
-    { id: "p1", title: "FSC-A vs SSC-A", type: "density", x: "fsc", y: "ssc", population: "all", scaleX: "linear", scaleY: "linear", zoom: 1 },
-    { id: "p2", title: "CD4 vs CD8", type: "scatter", x: "cd4", y: "cd8", population: "cd3", scaleX: "logicle", scaleY: "logicle", zoom: 1 },
-    { id: "p3", title: "CD3 Histogram", type: "histogram", x: "cd3", y: null, population: "live", scaleX: "logicle", scaleY: "linear", zoom: 1 },
-    { id: "p4", title: "UMAP Overlay", type: "umap", x: "umap1", y: "umap2", population: "live", scaleX: "linear", scaleY: "linear", zoom: 1 }
+    { id: "p1", title: "FSC-A vs SSC-A", type: "density", x: "fsc", y: "ssc", population: "all", scaleX: "linear", scaleY: "linear", transformX: defaultTransformSettings(), transformY: defaultTransformSettings(), zoom: 1 },
+    { id: "p2", title: "CD4 vs CD8", type: "scatter", x: "cd4", y: "cd8", population: "cd3", scaleX: "logicle", scaleY: "logicle", transformX: defaultTransformSettings(), transformY: defaultTransformSettings(), zoom: 1 },
+    { id: "p3", title: "CD3 Histogram", type: "histogram", x: "cd3", y: null, population: "live", scaleX: "logicle", scaleY: "linear", transformX: defaultTransformSettings(), transformY: defaultTransformSettings(), zoom: 1 },
+    { id: "p4", title: "UMAP Overlay", type: "umap", x: "umap1", y: "umap2", population: "live", scaleX: "linear", scaleY: "linear", transformX: defaultTransformSettings(), transformY: defaultTransformSettings(), zoom: 1 }
   ],
   gates: [
     { id: "g1", plot: "p1", population: "live", type: "polygon", label: "Cells 87.6%", points: [[0.18,0.82],[0.16,0.55],[0.28,0.30],[0.48,0.17],[0.76,0.18],[0.85,0.43],[0.78,0.78],[0.40,0.88]] },
@@ -70,6 +70,10 @@ const state = {
 };
 
 let syntheticEvents = [];
+
+function defaultTransformSettings() {
+  return { cofactor: 150, width: 18, floor: 1 };
+}
 
 function rand(seed) {
   let t = seed += 0x6D2B79F5;
@@ -145,17 +149,21 @@ function activeEvents() {
   return sample?.parsedEvents?.length ? sample.parsedEvents : syntheticEvents;
 }
 
-function transformValue(value, scale) {
+function transformValue(value, scale, options = {}) {
   const transforms = fcsCore?.transforms;
-  if (transforms?.[scale]) return transforms[scale](value);
+  if (transforms?.[scale]) return transforms[scale](value, options);
   return value;
 }
 
-function normalize(value, parameter, scale) {
+function normalize(value, parameter, scale, options = {}) {
   if (!Number.isFinite(value)) return 0;
-  if (fcsCore?.transforms?.normalize) return fcsCore.transforms.normalize(value, parameter.range, scale);
+  if (fcsCore?.transforms?.normalize) return fcsCore.transforms.normalize(value, parameter.range, scale, options);
   const [min, max] = parameter.range;
   return Math.max(0, Math.min(1, (value - min) / (max - min)));
+}
+
+function axisTransformOptions(plotConfig, axis) {
+  return plotConfig[axis === "x" ? "transformX" : "transformY"] || defaultTransformSettings();
 }
 
 function toast(message) {
@@ -355,8 +363,8 @@ function drawScatter(ctx, width, height, pad, p) {
   if (p.type === "density") {
     const bins = new Map();
     events.forEach(ev => {
-      const x = Math.floor(normalize(ev[p.x], xParam, p.scaleX) * 72);
-      const y = Math.floor(normalize(ev[p.y], yParam, p.scaleY) * 52);
+      const x = Math.floor(normalize(ev[p.x], xParam, p.scaleX, axisTransformOptions(p, "x")) * 72);
+      const y = Math.floor(normalize(ev[p.y], yParam, p.scaleY, axisTransformOptions(p, "y")) * 52);
       const key = `${x},${y}`;
       bins.set(key, (bins.get(key) || 0) + 1);
     });
@@ -372,8 +380,8 @@ function drawScatter(ctx, width, height, pad, p) {
   }
   events.forEach((ev, i) => {
     if (i % (p.type === "density" ? 4 : 1)) return;
-    const x = pad.l + normalize(ev[p.x], xParam, p.scaleX) * plotW;
-    const y = pad.t + (1 - normalize(ev[p.y], yParam, p.scaleY)) * plotH;
+    const x = pad.l + normalize(ev[p.x], xParam, p.scaleX, axisTransformOptions(p, "x")) * plotW;
+    const y = pad.t + (1 - normalize(ev[p.y], yParam, p.scaleY, axisTransformOptions(p, "y"))) * plotH;
     ctx.fillStyle = p.type === "umap" ? (ev.color || colors[i % colors.length]) : (p.type === "density" ? "rgba(122,200,255,.28)" : (ev.color || colors[i % colors.length]));
     ctx.globalAlpha = p.type === "umap" ? 0.72 : 0.44;
     ctx.fillRect(x, y, 1.25, 1.25);
@@ -391,31 +399,56 @@ function densityColor(t) {
 function drawHistogram(ctx, width, height, pad, p) {
   const plotW = width - pad.l - pad.r;
   const plotH = height - pad.t - pad.b;
-  const series = [
-    { color: colors[1], mu: 0.75, sd: 0.05, alpha: 0.55 },
-    { color: colors[2], mu: 0.42, sd: 0.04, alpha: 0.42 },
-    { color: "#d8dfdc", mu: 0.22, sd: 0.035, alpha: 0.34 }
+  const xParam = param(p.x);
+  const primary = histogramBins(activeEvents(), p.x, xParam, p.scaleX, axisTransformOptions(p, "x"), 72);
+  const overlays = [
+    { bins: primary, color: colors[1], alpha: 0.54, label: "active" },
+    { bins: smoothBins(primary, 0.63, 5), color: colors[2], alpha: 0.34, label: "FMO" },
+    { bins: smoothBins(primary, 0.38, -7), color: "#d8dfdc", alpha: 0.28, label: "isotype" }
   ];
-  series.forEach(s => {
+  const max = Math.max(1, ...overlays.flatMap(series => series.bins));
+  overlays.forEach(series => {
     ctx.beginPath();
-    for (let i = 0; i <= 120; i++) {
-      const x = i / 120;
-      const y = Math.exp(-Math.pow(x - s.mu, 2) / (2 * s.sd * s.sd));
+    series.bins.forEach((count, i) => {
+      const x = i / (series.bins.length - 1);
+      const y = count / max;
       const px = pad.l + x * plotW;
       const py = pad.t + (1 - y * 0.92) * plotH;
       if (i === 0) ctx.moveTo(px, py);
       else ctx.lineTo(px, py);
-    }
-    ctx.strokeStyle = s.color;
+    });
+    ctx.strokeStyle = series.color;
     ctx.lineWidth = 2;
     ctx.stroke();
     ctx.lineTo(pad.l + plotW, height - pad.b);
     ctx.lineTo(pad.l, height - pad.b);
     ctx.closePath();
-    ctx.fillStyle = s.color;
-    ctx.globalAlpha = s.alpha;
+    ctx.fillStyle = series.color;
+    ctx.globalAlpha = series.alpha;
     ctx.fill();
     ctx.globalAlpha = 1;
+  });
+}
+
+function histogramBins(events, parameterId, parameter, scale, options, binCount) {
+  const bins = Array.from({ length: binCount }, () => 0);
+  events.forEach(event => {
+    const value = event[parameterId];
+    if (!Number.isFinite(value)) return;
+    const normalized = normalize(value, parameter, scale, options);
+    const index = Math.max(0, Math.min(binCount - 1, Math.floor(normalized * binCount)));
+    bins[index] += 1;
+  });
+  return bins;
+}
+
+function smoothBins(source, scale = 1, shift = 0) {
+  return source.map((_, index) => {
+    const shifted = Math.max(0, Math.min(source.length - 1, index + shift));
+    const prev = source[Math.max(0, shifted - 1)] || 0;
+    const current = source[shifted] || 0;
+    const next = source[Math.min(source.length - 1, shifted + 1)] || 0;
+    return ((prev + current * 2 + next) / 4) * scale;
   });
 }
 
@@ -441,6 +474,8 @@ function renderInspector() {
       <label class="field"><span>Y Axis</span><select data-edit-plot="y"><option value="">Frequency</option>${parameters.map(par => `<option value="${par.id}" ${p.y === par.id ? "selected" : ""}>${par.label}</option>`).join("")}</select></label>
       <label class="field"><span>X Scale</span><select data-edit-plot="scaleX">${scaleOptions(p.scaleX)}</select></label>
       <label class="field"><span>Y Scale</span><select data-edit-plot="scaleY">${scaleOptions(p.scaleY)}</select></label>
+      ${transformControls("X", p.scaleX, p.transformX)}
+      ${p.y ? transformControls("Y", p.scaleY, p.transformY) : ""}
       <div class="button-row"><button class="secondary" data-action="reset-scale">Reset scaling</button><button class="primary" data-action="create-gate">Create ${state.activeTool} gate</button></div>
     </div>
     <div class="panel-block"><h3>Population Statistics</h3>
@@ -476,6 +511,20 @@ function renderInspector() {
 
 function scaleOptions(active) {
   return ["linear", "log", "logicle", "arcsinh"].map(v => `<option ${active === v ? "selected" : ""}>${v}</option>`).join("");
+}
+
+function transformControls(axisLabel, scale, values = defaultTransformSettings()) {
+  const axis = axisLabel.toLowerCase();
+  if (scale === "arcsinh") {
+    return `<label class="field"><span>${axisLabel} Cofactor</span><input type="number" min="1" max="10000" step="25" value="${values.cofactor ?? 150}" data-transform-axis="${axis}" data-transform-key="cofactor"></label>`;
+  }
+  if (scale === "logicle") {
+    return `<label class="field"><span>${axisLabel} Width</span><input type="number" min="1" max="1000" step="1" value="${values.width ?? 18}" data-transform-axis="${axis}" data-transform-key="width"></label>`;
+  }
+  if (scale === "log") {
+    return `<label class="field"><span>${axisLabel} Floor</span><input type="number" min="0.0001" max="10000" step="1" value="${values.floor ?? 1}" data-transform-axis="${axis}" data-transform-key="floor"></label>`;
+  }
+  return "";
 }
 
 function surfaceHTML(view) {
@@ -753,6 +802,8 @@ function adoptImportedParameters(sample) {
     state.plots[0].y = sample.parameters[1].id;
     state.plots[0].scaleX = sample.parameters[0].scale;
     state.plots[0].scaleY = sample.parameters[1].scale;
+    state.plots[0].transformX = defaultTransformSettings();
+    state.plots[0].transformY = defaultTransformSettings();
     state.plots[0].title = `${sample.parameters[0].raw} vs ${sample.parameters[1].raw}`;
   }
 }
@@ -814,11 +865,23 @@ function bindEvents() {
     renderInspector();
   }));
   document.body.addEventListener("change", event => {
+    const transformAxis = event.target.dataset.transformAxis;
+    const transformKey = event.target.dataset.transformKey;
+    if (transformAxis && transformKey) {
+      const p = plot(state.selectedPlot);
+      const target = transformAxis === "x" ? "transformX" : "transformY";
+      p[target] = { ...defaultTransformSettings(), ...(p[target] || {}), [transformKey]: Number(event.target.value) };
+      addHistory(`Adjusted ${transformAxis.toUpperCase()} ${transformKey} to ${event.target.value}`);
+      render();
+      return;
+    }
     const key = event.target.dataset.editPlot;
     if (!key) return;
     const p = plot(state.selectedPlot);
     p[key] = event.target.value || null;
     if (key === "type" && event.target.value === "histogram") p.y = null;
+    if (key === "scaleX") p.transformX = { ...defaultTransformSettings(), ...(p.transformX || {}) };
+    if (key === "scaleY") p.transformY = { ...defaultTransformSettings(), ...(p.transformY || {}) };
     addHistory(`Updated plot ${key} to ${event.target.value || "none"}`);
     render();
   });
@@ -838,7 +901,7 @@ function bindEvents() {
     if (action === "command") openCommandPalette();
     if (action === "create-gate") createGate();
     if (action === "add-plot") {
-      state.plots.push({ id: `p${Date.now()}`, title: "New Plot", type: "scatter", x: "cd3", y: "cd4", population: state.selectedPopulation, scaleX: "logicle", scaleY: "logicle", zoom: 1 });
+      state.plots.push({ id: `p${Date.now()}`, title: "New Plot", type: "scatter", x: "cd3", y: "cd4", population: state.selectedPopulation, scaleX: "logicle", scaleY: "logicle", transformX: defaultTransformSettings(), transformY: defaultTransformSettings(), zoom: 1 });
       state.activeView = "canvas";
       addHistory("Added a linked plot tile");
       render();
@@ -856,6 +919,8 @@ function bindEvents() {
       const p = plot(state.selectedPlot);
       p.scaleX = param(p.x).scale;
       p.scaleY = p.y ? param(p.y).scale : "linear";
+      p.transformX = defaultTransformSettings();
+      p.transformY = defaultTransformSettings();
       addHistory("Reset axis scaling to defaults");
       render();
     }

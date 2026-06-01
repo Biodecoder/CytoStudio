@@ -168,20 +168,24 @@
     linear(value) {
       return value;
     },
-    log(value) {
-      return Math.log10(Math.max(value, 1));
+    log(value, options = {}) {
+      const floor = options.floor ?? 1;
+      return Math.log10(Math.max(value, floor));
     },
-    arcsinh(value, cofactor = 150) {
+    arcsinh(value, options = {}) {
+      const cofactor = options.cofactor ?? 150;
       return Math.asinh(value / cofactor);
     },
-    logicle(value, width = 18) {
+    logicle(value, options = {}) {
+      const width = options.width ?? 18;
       return Math.sign(value) * Math.log10(1 + Math.abs(value) / width);
     },
     normalize(value, range, scale = "linear", options = {}) {
       const fn = transforms[scale] || transforms.linear;
-      const min = fn(range[0], options.cofactor, options.width);
-      const max = fn(range[1], options.cofactor, options.width);
-      const transformed = fn(value, options.cofactor, options.width);
+      const min = fn(range[0], options);
+      const max = fn(range[1], options);
+      const transformed = fn(value, options);
+      if (max === min) return 0;
       return Math.max(0, Math.min(1, (transformed - min) / (max - min)));
     }
   };

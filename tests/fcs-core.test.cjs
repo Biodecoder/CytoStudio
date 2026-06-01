@@ -85,6 +85,9 @@ assert.equal(transforms.linear(-12), -12);
 assert.equal(transforms.log(1000), 3);
 assert.ok(transforms.arcsinh(-150) < 0);
 assert.ok(transforms.logicle(-20) < 0);
+assert.ok(transforms.arcsinh(300, { cofactor: 300 }) < transforms.arcsinh(300, { cofactor: 100 }));
+assert.ok(Math.abs(transforms.logicle(100, { width: 100 })) < Math.abs(transforms.logicle(100, { width: 10 })));
 assert.ok(transforms.normalize(50, [0, 100], "linear") === 0.5);
+assert.ok(transforms.normalize(-25, [-100, 1000], "logicle", { width: 25 }) > 0);
 
 console.log("fcs-core tests passed");
