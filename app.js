@@ -730,6 +730,7 @@ function drawPlot(canvas, p) {
   }
   if (p.type === "histogram") drawHistogram(ctx, width, height, pad, p);
   else drawScatter(ctx, width, height, pad, p);
+  drawBackgateOverlay(ctx, width, height, pad, p);
 }
 
 function drawAxisTicks(ctx, width, height, pad, p) {
@@ -855,6 +856,57 @@ function drawHistogram(ctx, width, height, pad, p) {
     ctx.fill();
     ctx.globalAlpha = 1;
   });
+}
+
+function isAncestorPopulation(ancestorId, descendantId) {
+  if (!ancestorId || ancestorId === descendantId) return false;
+  let current = population(descendantId);
+  while (current?.parent) {
+    if (current.parent === ancestorId) return true;
+    current = population(current.parent);
+  }
+  return ancestorId === "all";
+}
+
+function drawBackgateOverlay(ctx, width, height, pad, p) {
+  const selected = population(state.selectedPopulation);
+  const plotPopulation = p.population || "all";
+  if (!selected || !isAncestorPopulation(plotPopulation, selected.id)) return;
+  const events = sampleEventsForPopulation(selected.id).slice(0, p.y ? 900 : 360);
+  if (!events.length) return;
+  const xParam = param(p.x);
+  const yParam = p.y ? param(p.y) : null;
+  const plotW = width - pad.l - pad.r;
+  const plotH = height - pad.t - pad.b;
+  const color = selected.color || "#31e6d0";
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 1.3;
+  ctx.globalAlpha = 0.86;
+  if (yParam) {
+    events.forEach((event, index) => {
+      if (index % 2) return;
+      const x = pad.l + normalize(event[p.x], xParam, p.scaleX, axisTransformOptions(p, "x")) * plotW;
+      const y = pad.t + (1 - normalize(event[p.y], yParam, p.scaleY, axisTransformOptions(p, "y"))) * plotH;
+      ctx.beginPath();
+      ctx.arc(x, y, p.type === "umap" ? 2.3 : 1.8, 0, Math.PI * 2);
+      ctx.stroke();
+    });
+  } else {
+    events.forEach((event, index) => {
+      if (index % 3) return;
+      const x = pad.l + normalize(event[p.x], xParam, p.scaleX, axisTransformOptions(p, "x")) * plotW;
+      ctx.beginPath();
+      ctx.moveTo(x, height - pad.b - 2);
+      ctx.lineTo(x, height - pad.b - 18);
+      ctx.stroke();
+    });
+  }
+  ctx.globalAlpha = 1;
+  ctx.font = "11px -apple-system, BlinkMacSystemFont, sans-serif";
+  ctx.fillText(`Backgate: ${selected.name}`, pad.l + 8, pad.t + 14);
+  ctx.restore();
 }
 
 function histogramBins(events, parameterId, parameter, scale, options, binCount) {
