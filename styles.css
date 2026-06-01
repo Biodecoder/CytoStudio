@@ -291,12 +291,24 @@ canvas.plot-canvas, svg.gate-layer {
   height: 100%;
 }
 .gate-layer {
-  pointer-events: none;
+  pointer-events: auto;
 }
 .gate-shape {
   fill: rgba(49,230,208,0.10);
   stroke: rgba(235,255,252,0.82);
   stroke-width: 1.6;
+  vector-effect: non-scaling-stroke;
+  cursor: move;
+}
+.gate-shape.selected {
+  fill: rgba(49,230,208,0.18);
+  stroke: var(--accent);
+}
+.gate-handle {
+  fill: var(--accent);
+  stroke: rgba(3, 12, 12, 0.9);
+  stroke-width: 0.7;
+  cursor: grab;
   vector-effect: non-scaling-stroke;
 }
 .gate-label {

@@ -20,6 +20,7 @@ const state = {
   selectedSample: "s1",
   selectedPopulation: "cd3",
   selectedPlot: "p1",
+  selectedGate: "g0",
   inspectorTab: "plot",
   layout: JSON.parse(localStorage.getItem("cyto.layout") || "{}"),
   importProgress: 0,
@@ -185,6 +186,7 @@ let syntheticEvents = [];
 let highDimTimer = null;
 let activeImportWorker = null;
 let activeImportReject = null;
+let activeGateDrag = null;
 
 function defaultTransformSettings(parameter = null, events = []) {
   if (!parameter) return { cofactor: 150, width: 18, floor: 1 };
@@ -512,6 +514,7 @@ function renderTree() {
     row.addEventListener("click", () => {
       state.selectedPopulation = pop.id;
       state.selectedPlot = state.plots.find(p => p.population === pop.id)?.id || state.selectedPlot;
+      state.selectedGate = state.gates.find(gate => gate.population === pop.id)?.id || state.selectedGate;
       addHistory(`Selected population ${pop.name}; plots and stats live-linked`);
       render();
     });
@@ -607,24 +610,37 @@ function plotCardHTML(p) {
 function gateSVG(plotId, sample = selectedSample()) {
   return state.gates.filter(g => g.plot === plotId).map(gate => {
     const g = effectiveGateForSample(gate, sample);
+    const selected = gate.id === state.selectedGate || gate.population === state.selectedPopulation;
+    const handles = selected ? gateHandlesSVG(gate) : "";
+    const attrs = `data-gate-id="${gate.id}" data-gate-action="move"`;
     if (g.type === "rectangle") {
-      return `<rect class="gate-shape" x="${g.x1 * 100}%" y="${g.y1 * 100}%" width="${(g.x2 - g.x1) * 100}%" height="${(g.y2 - g.y1) * 100}%"></rect><text class="gate-label" x="${(g.x1 + 0.02) * 100}%" y="${(g.y1 + 0.08) * 100}%">${g.label}</text>`;
+      return `<rect class="gate-shape${selected ? " selected" : ""}" ${attrs} x="${g.x1 * 100}%" y="${g.y1 * 100}%" width="${(g.x2 - g.x1) * 100}%" height="${(g.y2 - g.y1) * 100}%"></rect><text class="gate-label" x="${(g.x1 + 0.02) * 100}%" y="${(g.y1 + 0.08) * 100}%">${g.label}</text>${handles}`;
     }
     if (g.type === "ellipse") {
-      return `<ellipse class="gate-shape" cx="${g.cx * 100}%" cy="${g.cy * 100}%" rx="${g.rx * 100}%" ry="${g.ry * 100}%"></ellipse><text class="gate-label" x="${(g.cx - g.rx * 0.5) * 100}%" y="${g.cy * 100}%">${g.label}</text>`;
+      return `<ellipse class="gate-shape${selected ? " selected" : ""}" ${attrs} cx="${g.cx * 100}%" cy="${g.cy * 100}%" rx="${g.rx * 100}%" ry="${g.ry * 100}%"></ellipse><text class="gate-label" x="${(g.cx - g.rx * 0.5) * 100}%" y="${g.cy * 100}%">${g.label}</text>${handles}`;
     }
     if (g.type === "polygon" || g.type === "lasso") {
       const pts = g.points.map(p => `${p[0] * 100},${p[1] * 100}`).join(" ");
-      return `<polygon class="gate-shape" points="${pts}" vector-effect="non-scaling-stroke"></polygon><text class="gate-label" x="22%" y="32%">${g.label}</text>`;
+      return `<polygon class="gate-shape${selected ? " selected" : ""}" ${attrs} points="${pts}" vector-effect="non-scaling-stroke"></polygon><text class="gate-label" x="22%" y="32%">${g.label}</text>${handles}`;
     }
     if (g.type === "quadrant") {
-      return `<line class="gate-shape" x1="${g.x * 100}%" y1="11%" x2="${g.x * 100}%" y2="88%"></line><line class="gate-shape" x1="12%" y1="${g.y * 100}%" x2="88%" y2="${g.y * 100}%"></line><text class="gate-label" x="70%" y="73%">${g.label}</text>`;
+      return `<line class="gate-shape${selected ? " selected" : ""}" ${attrs} x1="${g.x * 100}%" y1="11%" x2="${g.x * 100}%" y2="88%"></line><line class="gate-shape${selected ? " selected" : ""}" ${attrs} x1="12%" y1="${g.y * 100}%" x2="88%" y2="${g.y * 100}%"></line><text class="gate-label" x="70%" y="73%">${g.label}</text>${handles}`;
     }
     if (g.type === "interval") {
-      return `<rect class="gate-shape" x="${g.x1 * 100}%" y="12%" width="${(g.x2 - g.x1) * 100}%" height="76%"></rect><text class="gate-label" x="${(g.x1 + 0.02) * 100}%" y="22%">${g.label}</text>`;
+      return `<rect class="gate-shape${selected ? " selected" : ""}" ${attrs} x="${g.x1 * 100}%" y="12%" width="${(g.x2 - g.x1) * 100}%" height="76%"></rect><text class="gate-label" x="${(g.x1 + 0.02) * 100}%" y="22%">${g.label}</text>${handles}`;
     }
     return "";
   }).join("");
+}
+
+function gateHandlesSVG(gate) {
+  const handle = (x, y, action) => `<circle class="gate-handle" data-gate-id="${gate.id}" data-gate-action="${action}" cx="${x * 100}%" cy="${y * 100}%" r="1.8"></circle>`;
+  if (gate.type === "rectangle") return [["nw", gate.x1, gate.y1], ["ne", gate.x2, gate.y1], ["sw", gate.x1, gate.y2], ["se", gate.x2, gate.y2]].map(([a, x, y]) => handle(x, y, a)).join("");
+  if (gate.type === "ellipse") return handle(gate.cx, gate.cy, "center") + handle(gate.cx + gate.rx, gate.cy, "rx") + handle(gate.cx, gate.cy + gate.ry, "ry");
+  if (gate.type === "polygon" || gate.type === "lasso") return gate.points.map((point, index) => handle(point[0], point[1], `vertex-${index}`)).join("");
+  if (gate.type === "quadrant") return handle(gate.x, gate.y, "crosshair");
+  if (gate.type === "interval") return handle(gate.x1, 0.5, "x1") + handle(gate.x2, 0.5, "x2");
+  return "";
 }
 
 function legendHTML(p) {
@@ -1488,7 +1504,9 @@ function createGate() {
   };
   state.populations.push(newPop);
   state.selectedPopulation = id;
-  state.gates.push(buildGateForType(type, p.id, id));
+  const gate = buildGateForType(type, p.id, id);
+  state.gates.push(gate);
+  state.selectedGate = gate.id;
   recomputePopulationCounts();
   addHistory(`Created ${type} gate and live-linked child population`);
   toast("Gate created; hierarchy, plots, and stats updated");
@@ -1503,6 +1521,108 @@ function buildGateForType(type, plotId, populationId) {
   if (type === "interval") return { ...base, x1: 0.46, x2: 0.72 };
   if (type === "lasso") return { ...base, points: [[0.26,0.70],[0.32,0.44],[0.50,0.30],[0.72,0.42],[0.74,0.66],[0.56,0.78],[0.34,0.76]] };
   return { ...base, type: "polygon", points: [[0.28,0.72],[0.34,0.42],[0.58,0.30],[0.74,0.52],[0.66,0.78]] };
+}
+
+function selectGate(gate) {
+  if (!gate) return;
+  state.selectedGate = gate.id;
+  state.selectedPopulation = gate.population;
+  state.selectedPlot = gate.plot;
+}
+
+function clamp01(value) {
+  return Math.max(0.02, Math.min(0.98, value));
+}
+
+function normalizedPointFromEvent(event, svg) {
+  const rect = svg.getBoundingClientRect();
+  return {
+    x: clamp01((event.clientX - rect.left) / Math.max(rect.width, 1)),
+    y: clamp01((event.clientY - rect.top) / Math.max(rect.height, 1))
+  };
+}
+
+function moveGate(gate, dx, dy) {
+  const applyPoint = point => [clamp01(point[0] + dx), clamp01(point[1] + dy)];
+  if (gate.type === "rectangle" || gate.type === "interval") {
+    gate.x1 = clamp01(gate.x1 + dx);
+    gate.x2 = clamp01(gate.x2 + dx);
+    if (gate.type === "rectangle") {
+      gate.y1 = clamp01(gate.y1 + dy);
+      gate.y2 = clamp01(gate.y2 + dy);
+    }
+  } else if (gate.type === "ellipse") {
+    gate.cx = clamp01(gate.cx + dx);
+    gate.cy = clamp01(gate.cy + dy);
+  } else if (gate.type === "quadrant") {
+    gate.x = clamp01(gate.x + dx);
+    gate.y = clamp01(gate.y + dy);
+  } else if (gate.points) {
+    gate.points = gate.points.map(applyPoint);
+  }
+}
+
+function editGateGeometry(gate, action, point, delta) {
+  if (action === "move") return moveGate(gate, delta.x, delta.y);
+  if (gate.type === "rectangle") {
+    if (action.includes("w")) gate.x1 = Math.min(point.x, gate.x2 - 0.02);
+    if (action.includes("e")) gate.x2 = Math.max(point.x, gate.x1 + 0.02);
+    if (action.includes("n")) gate.y1 = Math.min(point.y, gate.y2 - 0.02);
+    if (action.includes("s")) gate.y2 = Math.max(point.y, gate.y1 + 0.02);
+  } else if (gate.type === "ellipse") {
+    if (action === "center") {
+      gate.cx = point.x;
+      gate.cy = point.y;
+    } else if (action === "rx") gate.rx = Math.max(0.03, Math.abs(point.x - gate.cx));
+    else if (action === "ry") gate.ry = Math.max(0.03, Math.abs(point.y - gate.cy));
+  } else if (gate.type === "quadrant") {
+    gate.x = point.x;
+    gate.y = point.y;
+  } else if (gate.type === "interval") {
+    if (action === "x1") gate.x1 = Math.min(point.x, gate.x2 - 0.02);
+    if (action === "x2") gate.x2 = Math.max(point.x, gate.x1 + 0.02);
+  } else if (gate.points && action.startsWith("vertex-")) {
+    const index = Number(action.split("-")[1]);
+    if (gate.points[index]) gate.points[index] = [point.x, point.y];
+  }
+}
+
+function beginGateDrag(event) {
+  const target = event.target.closest("[data-gate-id]");
+  if (!target) return;
+  const gate = state.gates.find(item => item.id === target.dataset.gateId);
+  const svg = target.closest("svg.gate-layer");
+  if (!gate || !svg) return;
+  event.preventDefault();
+  selectGate(gate);
+  activeGateDrag = {
+    gate,
+    svg,
+    action: target.dataset.gateAction || "move",
+    last: normalizedPointFromEvent(event, svg)
+  };
+  svg.innerHTML = gateSVG(gate.plot);
+}
+
+function continueGateDrag(event) {
+  if (!activeGateDrag) return;
+  event.preventDefault();
+  const point = normalizedPointFromEvent(event, activeGateDrag.svg);
+  const delta = { x: point.x - activeGateDrag.last.x, y: point.y - activeGateDrag.last.y };
+  editGateGeometry(activeGateDrag.gate, activeGateDrag.action, point, delta);
+  activeGateDrag.last = point;
+  recomputePopulationCounts();
+  renderTree();
+  renderInspector();
+  renderStatus();
+  activeGateDrag.svg.innerHTML = gateSVG(activeGateDrag.gate.plot);
+}
+
+function endGateDrag() {
+  if (!activeGateDrag) return;
+  addHistory(`Edited ${population(activeGateDrag.gate.population)?.name || "gate"} geometry`);
+  activeGateDrag = null;
+  render();
 }
 
 async function importFiles(files) {
@@ -2686,9 +2806,19 @@ function bindEvents() {
     }
     if (!event.metaKey && !event.ctrlKey && event.key.toLowerCase() === "h") toggleHighContrast();
     if (event.key === "Escape") closeCommandPalette();
-    if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key) && state.activeTool !== "pointer") {
-      addHistory(`Nudged selected ${state.activeTool} gate with ${event.key}`);
+    if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
+      const gate = state.gates.find(item => item.id === state.selectedGate) || state.gates.find(item => item.population === state.selectedPopulation);
+      if (!gate) return;
+      event.preventDefault();
+      const step = event.shiftKey ? 0.025 : 0.008;
+      const dx = event.key === "ArrowLeft" ? -step : (event.key === "ArrowRight" ? step : 0);
+      const dy = event.key === "ArrowUp" ? -step : (event.key === "ArrowDown" ? step : 0);
+      moveGate(gate, dx, dy);
+      selectGate(gate);
+      recomputePopulationCounts();
+      addHistory(`Nudged ${population(gate.population)?.name || "gate"} with ${event.key}`);
       toast("Gate nudged; live-linked stats refreshed");
+      render();
     }
   });
   document.getElementById("commandInput").addEventListener("input", renderCommands);
@@ -2708,6 +2838,15 @@ function bindEvents() {
   }));
   dropZone.addEventListener("drop", event => importFiles(event.dataTransfer.files));
   window.addEventListener("resize", () => requestAnimationFrame(drawAllPlots));
+  if (window.PointerEvent) {
+    document.getElementById("canvasRegion").addEventListener("pointerdown", beginGateDrag);
+    document.addEventListener("pointermove", continueGateDrag);
+    document.addEventListener("pointerup", endGateDrag);
+  } else {
+    document.getElementById("canvasRegion").addEventListener("mousedown", beginGateDrag);
+    document.addEventListener("mousemove", continueGateDrag);
+    document.addEventListener("mouseup", endGateDrag);
+  }
   document.getElementById("canvasRegion").addEventListener("wheel", event => {
     if (event.ctrlKey || event.metaKey) {
       event.preventDefault();
