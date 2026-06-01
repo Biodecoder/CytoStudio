@@ -1,0 +1,10 @@
+{
+  "name": "cytostudio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CytoStudio local-first flow cytometry analysis prototype.",
+  "scripts": {
+    "start": "python3 -m http.server 5178",
+    "check": "node --check app.js"
+  }
+}

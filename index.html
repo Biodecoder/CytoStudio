@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CytoStudio</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app" class="app-shell" data-theme="dark">
+    <header class="titlebar">
+      <div class="traffic" aria-hidden="true"><span></span><span></span><span></span></div>
+      <button class="toolbar-command" data-action="import" title="Import FCS files">Import</button>
+      <button class="toolbar-command" data-action="export" title="Export current workspace">Export</button>
+      <div class="title">CytoStudio — PBMC Panel</div>
+      <div class="tool-strip" role="toolbar" aria-label="Gate tools">
+        <button class="tool active" data-tool="pointer" title="Pointer">⌖<small>Pointer</small></button>
+        <button class="tool" data-tool="rectangle" title="Rectangle gate">▣<small>Rect</small></button>
+        <button class="tool" data-tool="polygon" title="Polygon gate">⬠<small>Poly</small></button>
+        <button class="tool" data-tool="ellipse" title="Ellipse gate">◯<small>Ellipse</small></button>
+        <button class="tool" data-tool="quadrant" title="Quadrant gate">⊞<small>Quad</small></button>
+        <button class="tool" data-tool="interval" title="Histogram interval gate">↔<small>Interval</small></button>
+        <button class="tool" data-tool="lasso" title="Freehand lasso">⌁<small>Lasso</small></button>
+      </div>
+      <button class="icon-button" data-action="command" title="Command palette">⌘K</button>
+      <button class="icon-button" data-panel="compensation" title="Compensation editor">Matrix</button>
+      <button class="icon-button" data-panel="spectral" title="Spectral unmixing">Unmix</button>
+      <button class="icon-button" data-action="theme" title="Toggle appearance">◐</button>
+    </header>
+
+    <main class="workspace">
+      <aside class="sidebar left" id="leftRail">
+        <section class="pane sample-pane">
+          <div class="pane-head">
+            <h2>Experiment</h2>
+            <button class="tiny" data-action="collapse-samples" title="Collapse samples">–</button>
+          </div>
+          <label class="search">
+            <span>⌕</span>
+            <input id="sampleSearch" type="search" placeholder="Search samples">
+          </label>
+          <div id="dropZone" class="drop-zone" tabindex="0">
+            <strong>Drop FCS files or folders</strong>
+            <span>FCS 3.0 / 3.1 import is scaffolded with responsive progress and metadata preview.</span>
+          </div>
+          <div id="sampleList" class="sample-list" aria-label="Samples"></div>
+        </section>
+        <div class="resizer" data-resize="left"></div>
+        <section class="pane hierarchy-pane">
+          <div class="pane-head">
+            <h2>Population Hierarchy</h2>
+            <button class="tiny" data-action="add-boolean" title="Create boolean gate">∩</button>
+          </div>
+          <div id="populationTree" class="tree" aria-label="Population hierarchy"></div>
+          <div class="rail-actions">
+            <button data-action="add-plot">＋ Plot</button>
+            <button data-action="duplicate-pop">Duplicate</button>
+            <button data-action="delete-pop">Delete</button>
+          </div>
+        </section>
+      </aside>
+
+      <section class="canvas-wrap" id="canvasRegion" tabindex="-1">
+        <nav class="tabs" aria-label="Workspace views">
+          <button class="tab active" data-view="canvas">Canvas</button>
+          <button class="tab" data-view="tables">Statistics</button>
+          <button class="tab" data-view="compensation">Compensation</button>
+          <button class="tab" data-view="spectral">Spectral</button>
+          <button class="tab" data-view="highdim">High-Dim</button>
+          <button class="tab" data-view="figure">Figure</button>
+          <button class="tab" data-view="pipeline">Pipeline</button>
+          <button class="tab" data-view="share">Share</button>
+          <button class="tab" data-view="clinical">Clinical</button>
+        </nav>
+        <div id="viewHost" class="view-host"></div>
+      </section>
+
+      <aside class="sidebar right" id="rightRail">
+        <section class="pane inspector">
+          <div class="segmented" role="tablist">
+            <button class="active" data-inspector="plot">Inspector</button>
+            <button data-inspector="history">History</button>
+          </div>
+          <div id="inspectorBody"></div>
+        </section>
+      </aside>
+    </main>
+
+    <footer class="statusbar">
+      <span id="statusEvents">Events: 10,432,912</span>
+      <span id="statusSample">Sample: PBMC Panel.fcs</span>
+      <span id="statusPopulation">Selected: CD3+ T Cells</span>
+      <span class="live">Live Link: ON</span>
+      <span id="statusPipeline">Pipeline: 17 prompt surfaces scaffolded</span>
+      <span class="ok">Up to date</span>
+    </footer>
+
+    <div id="commandPalette" class="command-palette hidden" role="dialog" aria-modal="true" aria-label="Command palette">
+      <div class="command-box">
+        <input id="commandInput" type="search" placeholder="Jump to sample, gate, parameter, or action">
+        <div id="commandResults" class="command-results"></div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,751 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CytoStudio — Blueprint & Codex Build Prompts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0d0f; --bg2:#0f1417; --panel:#121a1e; --line:rgba(46,230,201,.16);
+  --line2:rgba(255,255,255,.07); --ink:#e9f1f0; --muted:#93a3a2; --dim:#62716f;
+  --accent:#2ee6c9; --accent2:#19b89f; --warm:#ffb454; --warm2:#ff8d6b;
+  --rad:14px; --maxw:1080px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:
+  radial-gradient(1200px 600px at 78% -8%, rgba(46,230,201,.10), transparent 60%),
+  radial-gradient(900px 500px at 5% 4%, rgba(255,180,84,.06), transparent 55%),
+  var(--bg);
+  color:var(--ink);
+  font-family:"Hanken Grotesk",-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif;
+  font-size:17px; line-height:1.65; -webkit-font-smoothing:antialiased;}
+body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.5;
+  background-image:radial-gradient(rgba(255,255,255,.05) 1px, transparent 1px);
+  background-size:26px 26px;
+  -webkit-mask-image:radial-gradient(1200px 700px at 70% 0%, #000, transparent 75%);
+          mask-image:radial-gradient(1200px 700px at 70% 0%, #000, transparent 75%);}
+a{color:var(--accent);text-decoration:none}
+.serif{font-family:"Instrument Serif","Iowan Old Style",Georgia,serif;font-weight:400;letter-spacing:.2px}
+.mono{font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+
+/* top bar */
+.bar{position:sticky;top:0;z-index:50;backdrop-filter:saturate(140%) blur(14px);
+  background:rgba(10,13,15,.72);border-bottom:1px solid var(--line2)}
+.bar .in{max-width:var(--maxw);margin:0 auto;padding:14px 22px;display:flex;align-items:center;gap:14px}
+.logo{display:flex;align-items:center;gap:11px;font-weight:600;letter-spacing:.3px}
+.dotmark{width:26px;height:26px;border-radius:8px;position:relative;
+  background:radial-gradient(circle at 30% 30%, var(--accent), #0a3c36 70%);
+  box-shadow:0 0 0 1px rgba(46,230,201,.4) inset, 0 0 22px rgba(46,230,201,.35)}
+.dotmark::after{content:"";position:absolute;left:50%;top:-3px;bottom:-3px;width:2px;transform:translateX(-50%);
+  background:linear-gradient(var(--accent),transparent);opacity:.7}
+.bar nav{margin-left:auto;display:flex;gap:20px;font-size:14px}
+.bar nav a{color:var(--muted)}
+.bar nav a:hover{color:var(--ink)}
+@media(max-width:760px){.bar nav{display:none}}
+
+/* layout */
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 22px;position:relative;z-index:1}
+.shell{display:grid;grid-template-columns:210px 1fr;gap:46px;align-items:start}
+@media(max-width:920px){.shell{grid-template-columns:1fr}.toc{display:none}}
+.toc{position:sticky;top:84px;font-size:13.5px;border-left:1px solid var(--line2);padding-left:16px}
+.toc a{display:block;color:var(--dim);padding:5px 0}
+.toc a:hover{color:var(--ink)}
+.toc a.active{color:var(--accent)}
+.toc .grp{color:var(--muted);text-transform:uppercase;letter-spacing:.14em;font-size:11px;margin:16px 0 4px}
+
+/* hero */
+.hero{padding:74px 0 34px}
+.kick{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--accent);border:1px solid var(--line);border-radius:999px;padding:6px 13px}
+.hero h1{font-size:clamp(44px,7vw,82px);line-height:1.02;margin:22px 0 10px}
+.hero h1 em{color:var(--accent);font-style:italic}
+.hero .sub{font-size:20px;color:var(--muted);max-width:760px}
+.hero .meta{margin-top:22px;display:flex;flex-wrap:wrap;gap:10px}
+.chip{font-size:12.5px;color:var(--muted);border:1px solid var(--line2);border-radius:999px;padding:6px 12px;background:var(--bg2)}
+.chip b{color:var(--ink);font-weight:500}
+
+/* sections */
+section{padding:40px 0;border-top:1px solid var(--line2)}
+.eyebrow{font-size:12.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin:0 0 8px}
+h2.sec{font-size:clamp(28px,4vw,40px);margin:0 0 8px;line-height:1.1}
+.lead{color:var(--muted);max-width:780px;margin:0 0 22px}
+
+.callout{border:1px solid var(--line);border-left:3px solid var(--accent);background:linear-gradient(90deg,rgba(46,230,201,.07),transparent);
+  border-radius:0 var(--rad) var(--rad) 0;padding:16px 20px;margin:18px 0;color:var(--ink)}
+.callout b{color:var(--accent);font-weight:600}
+
+/* grids */
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(2,1fr)} .g3{grid-template-columns:repeat(3,1fr)}
+@media(max-width:760px){.g2,.g3{grid-template-columns:1fr}}
+.tile{background:var(--bg2);border:1px solid var(--line2);border-radius:var(--rad);padding:16px 18px}
+.tile h4{margin:0 0 5px;font-size:15.5px}
+.tile p{margin:0;color:var(--muted);font-size:14.5px}
+.tile .num{font-family:"Instrument Serif",serif;font-size:30px;color:var(--accent);line-height:1}
+
+/* table */
+.tablewrap{overflow:auto;border:1px solid var(--line2);border-radius:var(--rad);background:var(--bg2)}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:680px}
+th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line2);vertical-align:top}
+th{color:var(--accent);font-weight:600;letter-spacing:.04em;background:rgba(46,230,201,.05);position:sticky;top:0}
+td:first-child{color:var(--ink);font-weight:500;white-space:nowrap}
+tr:last-child td{border-bottom:none}
+.win{color:var(--accent)}
+
+/* schematic */
+.schem{border:1px solid var(--line2);border-radius:var(--rad);overflow:hidden;background:var(--bg2);margin:8px 0 4px}
+.schem .top{display:flex;align-items:center;gap:7px;padding:10px 14px;border-bottom:1px solid var(--line2);font-size:12.5px;color:var(--muted)}
+.tl{display:flex;gap:6px}.tl i{width:11px;height:11px;border-radius:50%;display:block}
+.tl i:nth-child(1){background:#ff5f57}.tl i:nth-child(2){background:#febc2e}.tl i:nth-child(3){background:#28c840}
+.schem .body{display:grid;grid-template-columns:170px 1fr 190px;min-height:230px}
+.schem .col{padding:12px 14px;font-size:12.5px}
+.schem .col+.col{border-left:1px solid var(--line2)}
+.schem .lbl{color:var(--accent);letter-spacing:.12em;text-transform:uppercase;font-size:10.5px;margin-bottom:8px}
+.schem .row{color:var(--muted);padding:3px 0}
+.schem .tree{color:var(--muted);font-family:"JetBrains Mono",monospace;font-size:11.5px;line-height:1.7;white-space:pre}
+.plots{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.plot{height:78px;border:1px solid var(--line2);border-radius:10px;position:relative;overflow:hidden;background:#0c1316}
+.plot::before{content:attr(data-l);position:absolute;left:8px;top:6px;font-size:10px;color:var(--dim);z-index:2}
+.scatter{position:absolute;inset:0}
+.scatter span{position:absolute;width:3px;height:3px;border-radius:50%}
+
+/* prompt cards */
+.toolbar-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 18px}
+.btn{cursor:pointer;border:1px solid var(--line);background:rgba(46,230,201,.08);color:var(--accent);
+  border-radius:10px;padding:9px 15px;font-size:13.5px;font-weight:500;font-family:inherit;transition:.15s}
+.btn:hover{background:rgba(46,230,201,.16)}
+.btn:active{transform:scale(.98)}
+.card{border:1px solid var(--line2);border-radius:16px;background:linear-gradient(180deg,var(--panel),var(--bg2));
+  margin:14px 0;overflow:hidden}
+.card .head{display:flex;align-items:flex-start;gap:14px;padding:18px 20px 8px}
+.card .idx{font-family:"Instrument Serif",serif;font-size:40px;line-height:.9;color:var(--accent);min-width:54px}
+.card .htext{flex:1}
+.card .htext h3{margin:2px 0 6px;font-size:20px}
+.tags{display:flex;gap:8px;flex-wrap:wrap}
+.tag{font-size:11.5px;border-radius:999px;padding:4px 11px;border:1px solid var(--line2);color:var(--muted)}
+.tag.m{color:var(--accent);border-color:var(--line)}
+.card .copy{align-self:flex-start}
+.prompt{margin:6px 18px 18px;background:#0a1013;border:1px solid var(--line2);border-radius:12px;
+  padding:16px 18px;color:#cfe0de;font-family:"JetBrains Mono",monospace;font-size:13px;line-height:1.62;
+  white-space:pre-wrap;overflow:auto}
+.done{color:var(--accent)}
+
+/* imagegen */
+.imgcard{background:var(--bg2);border:1px solid var(--line2);border-radius:var(--rad);padding:15px 17px}
+.imgcard .r{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}
+.imgcard h4{margin:0;font-size:15px}
+.imgcard p{margin:0;color:var(--muted);font-size:13.5px;white-space:pre-wrap}
+.mini{cursor:pointer;border:1px solid var(--line2);background:transparent;color:var(--muted);border-radius:8px;
+  padding:5px 11px;font-size:12px;font-family:inherit}
+.mini:hover{color:var(--accent);border-color:var(--line)}
+
+/* sequence */
+.steps{counter-reset:s;border-left:1px solid var(--line);margin-left:8px;padding-left:0}
+.step{position:relative;padding:10px 0 10px 30px;color:var(--muted);font-size:14.5px}
+.step::before{counter-increment:s;content:counter(s);position:absolute;left:-13px;top:10px;width:24px;height:24px;
+  border-radius:50%;background:var(--bg);border:1px solid var(--line);color:var(--accent);
+  font-size:11px;display:flex;align-items:center;justify-content:center;font-family:"JetBrains Mono",monospace}
+.step b{color:var(--ink);font-weight:500}
+.ms{display:inline-block;margin:2px 6px 2px 0;font-size:12px;border:1px solid var(--line);color:var(--accent);border-radius:999px;padding:3px 10px}
+
+footer{border-top:1px solid var(--line2);padding:34px 0 60px;color:var(--dim);font-size:13.5px;text-align:center}
+
+/* load anim */
+.reveal{opacity:0;transform:translateY(14px);animation:rise .7s cubic-bezier(.2,.7,.2,1) forwards}
+@keyframes rise{to{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<div class="bar"><div class="in">
+  <span class="logo"><span class="dotmark"></span>CytoStudio</span>
+  <nav>
+    <a href="#northstar">North star</a>
+    <a href="#synthesis">Synthesis</a>
+    <a href="#architecture">Architecture</a>
+    <a href="#design">Design</a>
+    <a href="#imagegen">Assets</a>
+    <a href="#prompts">Prompts</a>
+    <a href="#sequence">Sequence</a>
+  </nav>
+</div></div>
+
+<div class="wrap">
+<div class="hero reveal">
+  <span class="kick">Native macOS · Flow cytometry</span>
+  <h1 class="serif">The best of FlowJo, FCS&nbsp;Express &amp; Cytobank — <em>rebuilt for the Mac.</em></h1>
+  <p class="sub">A blueprint, architecture, open-source library map, image-generation asset briefs, and a full sequenced set of plain-language build prompts for Codex.</p>
+  <div class="meta">
+    <span class="chip"><b>17</b> Codex prompts</span>
+    <span class="chip"><b>5</b> milestones</span>
+    <span class="chip"><b>v1 focus:</b> fluid manual gating, live-linked</span>
+    <span class="chip"><b>then:</b> spectral · UMAP / FlowSOM</span>
+  </div>
+</div>
+</div>
+
+<div class="wrap"><div class="shell">
+  <aside class="toc">
+    <div class="grp">Blueprint</div>
+    <a href="#northstar">North star</a>
+    <a href="#synthesis">Feature synthesis</a>
+    <a href="#architecture">Architecture &amp; libraries</a>
+    <a href="#design">UI / UX</a>
+    <a href="#imagegen">Imagegen assets</a>
+    <div class="grp">Build prompts</div>
+    <a href="#p0">00 · Vision, scope &amp; guardrails</a><a href="#p1">01 · App shell, navigation &amp; design system</a><a href="#p2">02 · FCS import, metadata &amp; experiment manager</a><a href="#p3">03 · Data transforms &amp; per-axis scaling</a><a href="#p4">04 · The plot canvas (the visual heart)</a><a href="#p5">05 · Manual gating tools &amp; drawing UX</a><a href="#p6">06 · Population hierarchy, live-linking &amp; backgating</a><a href="#p7">07 · Statistics engine &amp; table editor</a><a href="#p8">08 · Compensation editor &amp; spillover QC</a><a href="#p9">09 · Spectral unmixing (high-parameter support)</a><a href="#p10">10 · Gating templates &amp; batch apply across samples</a><a href="#p11">11 · High-dimensional analysis &amp; cluster explorer</a><a href="#p12">12 · Layout / figure editor &amp; publication export</a><a href="#p13">13 · Reproducible pipeline, reports &amp; data export</a><a href="#p14">14 · Collaboration, workspace files &amp; interoperability</a><a href="#p15">15 · Onboarding, sample data, accessibility &amp; polish</a><a href="#p16">16 · Clinical / compliance mode (optional)</a>
+    <div class="grp">Plan</div>
+    <a href="#sequence">Sequence &amp; milestones</a>
+  </aside>
+
+  <main>
+    <section id="northstar">
+      <p class="eyebrow">First principles</p>
+      <h2 class="sec serif">Eight verbs on one table of cells</h2>
+      <p class="lead">Each cell is a row of detector numbers; each sample is a table of millions of rows by dozens of columns. Everything the software does is a verb applied to that table.</p>
+      <div class="grid g2"><div class="tile reveal"><div class="num">1</div><h4>Read</h4><p>Parse FCS 3.0/3.1 and raw spectral into an events-by-parameters table.</p></div><div class="tile reveal"><div class="num">2</div><h4>Transform</h4><p>Logicle / biexponential / arcsinh so populations separate visually.</p></div><div class="tile reveal"><div class="num">3</div><h4>Show</h4><p>Scatter, density, contour, histograms, high-dim embeddings.</p></div><div class="tile reveal"><div class="num">4</div><h4>Gate</h4><p>Carve the table into a live hierarchy of sub-populations.</p></div><div class="tile reveal"><div class="num">5</div><h4>Correct</h4><p>Compensation (matrix) and spectral unmixing of spillover.</p></div><div class="tile reveal"><div class="num">6</div><h4>Quantify</h4><p>Counts, %parent, %total, MFI, percentiles — live.</p></div><div class="tile reveal"><div class="num">7</div><h4>Scale</h4><p>One gating scheme across hundreds of samples, then tailor.</p></div><div class="tile reveal"><div class="num">8</div><h4>Communicate</h4><p>Figures, exports, reproducible record, sharing.</p></div></div>
+      <div class="callout"><b>The thesis.</b> No competitor nails all eight. FlowJo owns gating organization but feels dated on big data. FCS&nbsp;Express owns live-linked visualization and clinical polish but is Windows-first. Cytobank owns high-dim and collaboration but is browser-bound. CytoStudio wins by being the only tool that is native-fast, beautiful on macOS, live-linked end-to-end, and high-dim-native — with gating that feels like a drawing app, not a database.</div>
+    </section>
+
+    <section id="synthesis">
+      <p class="eyebrow">Competitive synthesis</p>
+      <h2 class="sec serif">What to take from each</h2>
+      <p class="lead">The right column is CytoStudio's version — the fusion, not a clone.</p>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Capability</th><th>FlowJo</th><th>FCS Express</th><th>Cytobank</th><th>CytoStudio</th></tr></thead>
+        <tbody><tr><td>Gating organization</td><td>Hierarchy tree; drag gates across samples; templates</td><td>—</td><td>Experiment-centric grouping</td><td class='win'>Hierarchy tree + template-per-group, both first-class</td></tr><tr><td>Live updates</td><td>Recompute on demand</td><td>Move a gate -&gt; every plot &amp; stat updates instantly</td><td>—</td><td class='win'>Instant live-linking everywhere (the headline feel)</td></tr><tr><td>Visualization</td><td>Adequate</td><td>Publication-grade plots, overlays, heat maps, PiP</td><td>Good web charts</td><td class='win'>Publication-grade and GPU-fast on millions of events</td></tr><tr><td>Figure assembly</td><td>Layout editor</td><td>Best-in-class layout, animations, tokens</td><td>Illustrations</td><td class='win'>Freeform canvas of live, linked data tiles</td></tr><tr><td>High-dimensional</td><td>Plugins</td><td>Some</td><td>viSNE, SPADE, CITRUS, FlowSOM built-in</td><td class='win'>UMAP / t-SNE / FlowSOM native + cluster explorer</td></tr><tr><td>Spectral</td><td>Limited</td><td>Some</td><td>Emerging</td><td class='win'>Full-spectrum unmixing as a core step</td></tr><tr><td>Compensation</td><td>Matrix editor</td><td>Strong</td><td>Auto</td><td class='win'>Visual matrix + N-by-N QC + auto-comp</td></tr><tr><td>Batch / automation</td><td>Apply-to-all</td><td>Token/pipeline automation</td><td>Reproducible compute</td><td class='win'>Replayable pipeline across samples</td></tr><tr><td>Collaboration</td><td>File-based</td><td>File-based</td><td>Cloud share, audit trail</td><td class='win'>Shareable workspaces + optional sync + audit log</td></tr><tr><td>Compliance</td><td>—</td><td>21 CFR Part 11</td><td>Audit trails</td><td class='win'>Optional clinical mode (e-sign + audit), gated</td></tr></tbody>
+      </table></div>
+    </section>
+
+    <section id="architecture">
+      <p class="eyebrow">Architecture &amp; open source</p>
+      <h2 class="sec serif">A fast core, a science sidecar</h2>
+      <p class="lead">Recommended shape (Codex may deviate with reason): a native shell, a fast columnar data + GPU-render core, and a bundled scientific sidecar reusing the mature cytometry ecosystem for correct math. Standards-based interchange throughout.</p>
+      <div class="callout"><b>Recommended stack.</b> Tauri shell (or SwiftUI + Metal for fully native) · Arrow/Polars columnar store, memory-mapped for huge files · WebGPU / wgpu + datashader-style aggregation for million-event plots · one reactive state store so gates ↔ plots ↔ stats stay live-linked · Python sidecar (FlowSOM, UMAP/t-SNE, NNLS unmixing) over Arrow IPC.</div>
+      <div class="grid g3"><div class="tile reveal"><h4>FCS parsing / reference</h4><p>flowio, fcsparser (Python); fcs (npm) — ground truth while building a fast native parser.</p></div><div class="tile reveal"><h4>Canonical analysis (R/Bioconductor)</h4><p>flowCore, flowWorkspace, openCyto, ggcyto, CytoML, flowStats, flowClust — correct transform &amp; gating math.</p></div><div class="tile reveal"><h4>Quality control</h4><p>flowAI, PeacoQC, flowCut — flow-rate &amp; anomaly QC patterns.</p></div><div class="tile reveal"><h4>High-dimensional</h4><p>FlowSOM, openTSNE, umap-learn, PaCMAP, EmbedSOM, PhenoGraph (leidenalg / python-louvain).</p></div><div class="tile reveal"><h4>Spillover / spectral</h4><p>scipy NNLS, AutoSpill (auto-compensation), spectral least-squares unmixing.</p></div><div class="tile reveal"><h4>Transforms</h4><p>logicle reference (Moore &amp; Parks); flowCore::logicleTransform; arcsinh.</p></div><div class="tile reveal"><h4>Plotting at scale</h4><p>datashader (aggregate millions to image), deck.gl / regl (GPU scatter), holoviews, plotly scattergl.</p></div><div class="tile reveal"><h4>Interchange / standards</h4><p>ISAC GatingML 2.0, FCS 3.1 spec, CytoML for FlowJo/Cytobank round-trips.</p></div><div class="tile reveal"><h4>Native building blocks</h4><p>Arrow / Polars (columnar), wgpu (GPU), Tauri (shell) — or SwiftUI + Metal for fully native.</p></div></div>
+    </section>
+
+    <section id="design">
+      <p class="eyebrow">UI / UX</p>
+      <h2 class="sec serif">Three panes; the data is the only color</h2>
+      <p class="lead">Left rail splits into sample browser + population tree; a freeform center canvas of linked plots; a context inspector with live stats. Chrome is quiet and monochrome — every saturated color lives inside the plots. Signature accent: cytometry teal-cyan, never the default system blue.</p>
+      <div class="schem reveal">
+        <div class="top"><span class="tl"><i></i><i></i><i></i></span>&nbsp; CytoStudio — PBMC Panel &nbsp;·&nbsp; ▮ pointer ▭ ▱ ◯ ⊞ ⋔ &nbsp;·&nbsp; Comp ▾ &nbsp; Unmix</div>
+        <div class="body">
+          <div class="col">
+            <div class="lbl">Samples</div>
+            <div class="row">• Donor1.fcs</div><div class="row">• Donor2.fcs</div><div class="row">• Donor3.fcs</div>
+            <div class="lbl" style="margin-top:14px">Hierarchy</div>
+            <div class="tree">Cells
+ └ Single cells
+   └ Live
+     └ CD3+
+       ├ CD4+
+       └ CD8+</div>
+          </div>
+          <div class="col">
+            <div class="lbl">Canvas · live-linked</div>
+            <div class="plots">
+              <div class="plot" data-l="FSC-A / SSC-A"><div class="scatter"></div></div><div class="plot" data-l="CD4 / CD8"><div class="scatter"></div></div><div class="plot" data-l="CD3 histogram"><div class="scatter"></div></div><div class="plot" data-l="UMAP overlay"><div class="scatter"></div></div>
+            </div>
+          </div>
+          <div class="col">
+            <div class="lbl">Inspector</div>
+            <div class="row">X: CD4 &nbsp; Y: CD8</div>
+            <div class="row">Scale: Logicle</div>
+            <div class="row" style="margin-top:10px;color:var(--accent)">CD4+ &nbsp; 42.1%</div>
+            <div class="row">events 81,344</div>
+            <div class="row">MFI 2,140</div>
+          </div>
+        </div>
+      </div>
+      <div class="grid g2" style="margin-top:14px"><div class="tile reveal"><h4>Live-linking</h4><p>Drag a gate vertex -&gt; dependent plots, child gates, and every statistic recompute in real time.</p></div><div class="tile reveal"><h4>Backgating</h4><p>Select a leaf population -&gt; highlight exactly where those cells sit in any ancestor plot.</p></div><div class="tile reveal"><h4>Tailoring</h4><p>Nudge a global gate on one sample without breaking the template; tailored samples are badged.</p></div><div class="tile reveal"><h4>Drag-to-overlay</h4><p>Drop one population onto another plot to overlay histograms/contours for comparison.</p></div><div class="tile reveal"><h4>Command bar</h4><p>Spotlight-style Command-K to jump to any sample, gate, parameter, or action.</p></div></div>
+    </section>
+
+    <section id="imagegen">
+      <p class="eyebrow">Graphic assets</p>
+      <h2 class="sec serif">OpenAI Imagegen briefs</h2>
+      <p class="lead">A shared style anchor is baked into every brief below so the set stays visually consistent. Generate a 1024×1024 master for the icon and request the feature-spot set in one batch.</p>
+      <div class="grid g2"><div class="imgcard reveal"><div class="r"><h4>App icon (macOS)</h4>
+      <button class="mini" onclick="copyImg(this)">Copy</button></div>
+      <p>Style: clean, modern, native-macOS aesthetic. Flat with soft depth, generous negative space, rounded geometry. Cool palette of deep charcoal, off-white, and a single signature teal-cyan accent (laser/signal feel). Subtle perceptually-uniform color gradients reminiscent of fluorescence density plots. Crisp, premium, scientific-but-friendly. No text unless specified, no clutter, no stock-photo realism, no hard drop shadows. A macOS app icon on the standard rounded-square (squircle) canvas. A stylized cluster of glowing cells flowing single-file through a thin beam of teal-cyan light, rendered as soft luminous dots forming a subtle density gradient from cool to warm. Minimal, iconic, instantly legible at small sizes. Centered, balanced, premium.</p></div><div class="imgcard reveal"><div class="r"><h4>Welcome / onboarding hero</h4>
+      <button class="mini" onclick="copyImg(this)">Copy</button></div>
+      <p>Style: clean, modern, native-macOS aesthetic. Flat with soft depth, generous negative space, rounded geometry. Cool palette of deep charcoal, off-white, and a single signature teal-cyan accent (laser/signal feel). Subtle perceptually-uniform color gradients reminiscent of fluorescence density plots. Crisp, premium, scientific-but-friendly. No text unless specified, no clutter, no stock-photo realism, no hard drop shadows. A wide hero illustration for an app welcome screen: an abstract, elegant flow-cytometry scatter plot where thousands of tiny points bloom into distinct glowing clusters, a faint laser line crossing the field. Inviting, spacious, optimistic, lots of dark negative space with teal-cyan highlights.</p></div><div class="imgcard reveal"><div class="r"><h4>Empty state — no samples</h4>
+      <button class="mini" onclick="copyImg(this)">Copy</button></div>
+      <p>Style: clean, modern, native-macOS aesthetic. Flat with soft depth, generous negative space, rounded geometry. Cool palette of deep charcoal, off-white, and a single signature teal-cyan accent (laser/signal feel). Subtle perceptually-uniform color gradients reminiscent of fluorescence density plots. Crisp, premium, scientific-but-friendly. No text unless specified, no clutter, no stock-photo realism, no hard drop shadows. A friendly minimal illustration: an empty translucent sample tube / data card with a faint dotted outline and a single cyan plus-sign glow, suggesting &#x27;drag your FCS files here.&#x27; Calm, uncluttered, plenty of breathing room.</p></div><div class="imgcard reveal"><div class="r"><h4>Empty state — no gates yet</h4>
+      <button class="mini" onclick="copyImg(this)">Copy</button></div>
+      <p>Style: clean, modern, native-macOS aesthetic. Flat with soft depth, generous negative space, rounded geometry. Cool palette of deep charcoal, off-white, and a single signature teal-cyan accent (laser/signal feel). Subtle perceptually-uniform color gradients reminiscent of fluorescence density plots. Crisp, premium, scientific-but-friendly. No text unless specified, no clutter, no stock-photo realism, no hard drop shadows. A minimal illustration of a soft scatter-plot cloud with a dashed lasso about to encircle a cluster of points, hinting at the act of drawing a gate. Light, instructional, gentle teal accent.</p></div><div class="imgcard reveal"><div class="r"><h4>Processing / unmixing frame</h4>
+      <button class="mini" onclick="copyImg(this)">Copy</button></div>
+      <p>Style: clean, modern, native-macOS aesthetic. Flat with soft depth, generous negative space, rounded geometry. Cool palette of deep charcoal, off-white, and a single signature teal-cyan accent (laser/signal feel). Subtle perceptually-uniform color gradients reminiscent of fluorescence density plots. Crisp, premium, scientific-but-friendly. No text unless specified, no clutter, no stock-photo realism, no hard drop shadows. An abstract loop-friendly illustration of overlapping colored spectral curves separating into clean distinct bands, conveying spectral unmixing. Smooth, scientific, luminous, dark background, teal-to-warm gradient.</p></div><div class="imgcard reveal"><div class="r"><h4>High-dimensional motif</h4>
+      <button class="mini" onclick="copyImg(this)">Copy</button></div>
+      <p>Style: clean, modern, native-macOS aesthetic. Flat with soft depth, generous negative space, rounded geometry. Cool palette of deep charcoal, off-white, and a single signature teal-cyan accent (laser/signal feel). Subtle perceptually-uniform color gradients reminiscent of fluorescence density plots. Crisp, premium, scientific-but-friendly. No text unless specified, no clutter, no stock-photo realism, no hard drop shadows. An abstract UMAP/t-SNE-style embedding: organic islands of densely packed glowing points in different hues drifting across a dark field, suggesting cell populations in high-dimensional space. Beautiful, painterly-but-precise.</p></div><div class="imgcard reveal"><div class="r"><h4>About / splash banner</h4>
+      <button class="mini" onclick="copyImg(this)">Copy</button></div>
+      <p>Style: clean, modern, native-macOS aesthetic. Flat with soft depth, generous negative space, rounded geometry. Cool palette of deep charcoal, off-white, and a single signature teal-cyan accent (laser/signal feel). Subtle perceptually-uniform color gradients reminiscent of fluorescence density plots. Crisp, premium, scientific-but-friendly. No text unless specified, no clutter, no stock-photo realism, no hard drop shadows. A premium horizontal splash banner: the signature single-file stream of luminous cells crossing a teal laser, dissolving on the right into a galaxy of clustered data points. Cinematic, minimal, brandable, room for a wordmark on the left.</p></div><div class="imgcard reveal"><div class="r"><h4>Feature spot set (matched series)</h4>
+      <button class="mini" onclick="copyImg(this)">Copy</button></div>
+      <p>Style: clean, modern, native-macOS aesthetic. Flat with soft depth, generous negative space, rounded geometry. Cool palette of deep charcoal, off-white, and a single signature teal-cyan accent (laser/signal feel). Subtle perceptually-uniform color gradients reminiscent of fluorescence density plots. Crisp, premium, scientific-but-friendly. No text unless specified, no clutter, no stock-photo realism, no hard drop shadows. Small square illustrations, same style, for: gating (a lasso around a cluster), compensation (a tilted grid straightening), statistics (glowing bars/percentages emerging from a cell cloud), collaboration (two overlapping data fields merging), reports (a tidy figure sheet of mini-plots).</p></div></div>
+    </section>
+
+    <section id="prompts">
+      <p class="eyebrow">The deliverable</p>
+      <h2 class="sec serif">17 Codex build prompts</h2>
+      <p class="lead">Plain product language — what to build and how it should feel — leaving implementation to Codex. Each ends with user-facing acceptance criteria. Run Prompt 00 first, then in order.</p>
+      <div class="toolbar-row">
+        <button class="btn" onclick="copyAll(this)">Copy all 17 prompts</button>
+        <span class="chip">Each is also a separate file in <span class="mono">/prompts</span></span>
+      </div>
+      <div id="promptlist">
+        <a id="p0"></a>
+    <div class="card reveal">
+      <div class="head">
+        <div class="idx">00</div>
+        <div class="htext">
+          <div class="tags"><span class="tag m">Foundation</span><span class="tag">depends on Run first</span></div>
+          <h3>Vision, scope &amp; guardrails</h3>
+        </div>
+        <button class="btn copy" onclick="copyCard(this)">Copy prompt</button>
+      </div>
+      <pre class="prompt">You are building CytoStudio, a native-feeling macOS desktop application for flow cytometry analysis. Its mission is to combine the best of three existing tools: the population-hierarchy gating workspace and &quot;apply one gating scheme to many samples&quot; model of FlowJo; the live-linked, publication-quality visualization and figure-layout craft of FCS Express; and the high-dimensional analysis (UMAP / t-SNE / FlowSOM) plus collaboration and reproducibility of Cytobank.
+
+Non-negotiable qualities, in priority order: (1) manual gating must feel as fluid as a drawing app, with everything live-linked so adjusting a gate instantly updates every dependent plot and statistic; (2) it must stay fast and responsive on samples with millions of events; (3) it must look and behave like a first-class macOS app (light/dark mode, system fonts, trackpad gestures, native window behavior); (4) it must eventually handle spectral / high-parameter data and automated clustering.
+
+You choose the languages, frameworks, and libraries — pick whatever best delivers native macOS polish and the performance to render millions of points smoothly, while letting you reuse the mature scientific cytometry ecosystem for correct math (transforms, compensation, clustering) rather than reinventing it. Favor a clean separation between a fast data/rendering core and the scientific algorithms.
+
+Set up the project skeleton, a component/design-system foundation themed to Apple&#x27;s Human Interface Guidelines with a signature teal-cyan accent, app-wide light/dark support, and a placeholder three-pane window (left sidebar, center canvas, right inspector, top toolbar, bottom status bar). Establish a single source of truth for application state so that data, gates, plots, and statistics can all stay synchronized automatically. Deliver a running, empty app I can launch. Document your stack choices and why in a README.
+
+<span class="done">Done when:</span> the app launches on macOS, shows the three-pane shell in both light and dark mode, the window behaves natively, and the README explains the architecture and how to run it.</pre>
+    </div><a id="p1"></a>
+    <div class="card reveal">
+      <div class="head">
+        <div class="idx">01</div>
+        <div class="htext">
+          <div class="tags"><span class="tag m">M1 — It gates</span><span class="tag">depends on Prompt 0</span></div>
+          <h3>App shell, navigation &amp; design system</h3>
+        </div>
+        <button class="btn copy" onclick="copyCard(this)">Copy prompt</button>
+      </div>
+      <pre class="prompt">Flesh out the application shell and design system. Build the three-pane workspace: a left rail that splits into a sample/experiment browser (top) and a population hierarchy tree (bottom); a center canvas that will hold a freeform arrangement of plots; a right inspector that shows context-sensitive properties and statistics; a top toolbar for tools and actions; and a bottom status bar showing total event count and workspace status.
+
+The chrome should be quiet and monochrome so that all color lives inside the data later. Add full keyboard navigation, a Command-K command palette to jump to any sample/gate/parameter/action, standard macOS menus, and trackpad gestures wired up as no-ops for now (pinch, two-finger pan) so plots can adopt them later. Panels should be resizable and collapsible; the layout state should persist between launches.
+
+<span class="done">Done when:</span> I can resize/collapse panels, the layout persists across relaunch, the command palette opens with Command-K and can focus each region, and the whole thing feels like a native Mac app in both appearance modes.</pre>
+    </div><a id="p2"></a>
+    <div class="card reveal">
+      <div class="head">
+        <div class="idx">02</div>
+        <div class="htext">
+          <div class="tags"><span class="tag m">M1 — It gates</span><span class="tag">depends on Prompts 0–1</span></div>
+          <h3>FCS import, metadata &amp; experiment manager</h3>
+        </div>
+        <button class="btn copy" onclick="copyCard(this)">Copy prompt</button>
+      </div>
+      <pre class="prompt">Implement loading of cytometry data files (FCS 3.0 and 3.1 to start; structure it so raw spectral formats can be added later). The user can drag-and-drop files or folders, or open them via the menu. On import, read every event and every parameter, plus the file&#x27;s embedded metadata (keywords) such as the parameter names, detector/fluorophore labels, instrument, operator, acquisition date, and any existing compensation matrix stored in the file.
+
+Organize files into an Experiment containing Samples, with the ability to group samples (e.g., by condition or timepoint) by drag-and-drop in the left browser. Show each sample&#x27;s key metadata in the inspector when selected. Display friendly parameter names (the marker/fluorophore label) everywhere, while keeping the raw channel name available. Handle large files gracefully — show progress, never freeze the UI, and be ready to work with files too big to hold fully in memory.
+
+<span class="done">Done when:</span> I can drag in multiple FCS files, see them listed and groupable, inspect each sample&#x27;s metadata and parameter list with human-readable marker names, and large files import with visible progress and no UI freeze.</pre>
+    </div><a id="p3"></a>
+    <div class="card reveal">
+      <div class="head">
+        <div class="idx">03</div>
+        <div class="htext">
+          <div class="tags"><span class="tag m">M1 — It gates</span><span class="tag">depends on Prompt 2</span></div>
+          <h3>Data transforms &amp; per-axis scaling</h3>
+        </div>
+        <button class="btn copy" onclick="copyCard(this)">Copy prompt</button>
+      </div>
+      <pre class="prompt">Add the data transforms that make populations visually separable. Because fluorescence intensity spans several orders of magnitude and can become negative after spillover correction, a plain logarithmic scale is inadequate. Implement the standard cytometry scales: biexponential / logicle (linear near zero, logarithmic far from it), arcsinh (for high-parameter and spectral data), plain log, and linear. Match the established, validated behavior of these transforms used across the field — correctness matters because biologists make gating decisions on these axes.
+
+Each plot axis can independently choose its scale and adjust the relevant parameters (e.g., the width / linear-region of a biexponential, the cofactor of an arcsinh) via simple, well-labeled controls in the inspector, with sensible auto-computed defaults per parameter. Provide an obvious &quot;reset to default scaling&quot; action. Changing a scale must update the plot live.
+
+<span class="done">Done when:</span> I can switch any axis between linear, log, biexponential/logicle, and arcsinh; negative post-compensation values display correctly; defaults look reasonable automatically; and adjustments update the view instantly.</pre>
+    </div><a id="p4"></a>
+    <div class="card reveal">
+      <div class="head">
+        <div class="idx">04</div>
+        <div class="htext">
+          <div class="tags"><span class="tag m">M1 — It gates</span><span class="tag">depends on Prompts 3, 4</span></div>
+          <h3>The plot canvas (the visual heart)</h3>
+        </div>
+        <button class="btn copy" onclick="copyCard(this)">Copy prompt</button>
+      </div>
+      <pre class="prompt">Build the plotting system — this is where the app earns its reputation, so it must be both beautiful and fast on millions of events. Support these plot types: 2D scatter (dot) plot, density plot (color-mapped by event density), contour plot, pseudocolor, zebra/contour hybrids, and 1D histograms. Default to a perceptually-uniform density colormap with classic alternatives available.
+
+Plots live on the center canvas in a freeform, rearrangeable grid; the user can add a plot, pick its X and Y parameters (X only for histograms), resize and move it, and zoom/pan it (including trackpad pinch and two-finger pan). For very large samples, render so the app stays at a smooth frame rate — aggregate or down-represent points as needed so the experience never stutters, while still looking like real data. Support overlays: dropping one population&#x27;s data onto a plot overlays it as a tinted contour or histogram for direct comparison, with a clear legend. Axes show human-readable marker names and the chosen scale.
+
+<span class="done">Done when:</span> I can create scatter/density/contour/histogram plots, choose parameters, rearrange and zoom them fluidly even with millions of events, overlay multiple populations with a legend, and everything looks publication-clean.</pre>
+    </div><a id="p5"></a>
+    <div class="card reveal">
+      <div class="head">
+        <div class="idx">05</div>
+        <div class="htext">
+          <div class="tags"><span class="tag m">M1 — It gates</span><span class="tag">depends on Prompt 4</span></div>
+          <h3>Manual gating tools &amp; drawing UX</h3>
+        </div>
+        <button class="btn copy" onclick="copyCard(this)">Copy prompt</button>
+      </div>
+      <pre class="prompt">Implement manual gating — the most-used interaction — so it feels like a precise, forgiving drawing app. Provide these gate tools in the toolbar: rectangle, polygon (click to place vertices, double-click / enter to close), ellipse, quadrant (splits a plot into four by a draggable crosshair), interval (a range gate on a histogram), and freehand / spline lasso. Also support boolean gates (AND / OR / NOT combinations of existing gates).
+
+Drawing mechanics: gates are drawn directly on a plot; vertices and edges are draggable after creation; the whole gate can be moved or resized; gates can be renamed inline and recolored. Snapping and nudge-with-arrow-keys help precision. Each gate visibly animates its fill on creation and shows its population&#x27;s percentage right on the plot. Every gate is bound to the plot&#x27;s two parameters, so a gate &quot;means&quot; a region in that 2D space.
+
+<span class="done">Done when:</span> I can draw and edit every gate type directly on plots, drag vertices to reshape, create boolean gates from existing ones, rename/recolor them, and each gate shows its population percentage on the plot.</pre>
+    </div><a id="p6"></a>
+    <div class="card reveal">
+      <div class="head">
+        <div class="idx">06</div>
+        <div class="htext">
+          <div class="tags"><span class="tag m">M1 — It gates</span><span class="tag">depends on Prompt 5</span></div>
+          <h3>Population hierarchy, live-linking &amp; backgating</h3>
+        </div>
+        <button class="btn copy" onclick="copyCard(this)">Copy prompt</button>
+      </div>
+      <pre class="prompt">Connect gates into a population hierarchy and make the whole app live-linked. When a gate is drawn inside a population&#x27;s plot, it creates a child population that contains only the parent&#x27;s events that fall inside the gate; this nesting is shown as an indented tree in the left rail (e.g., Cells &gt; Single Cells &gt; Live &gt; CD3+ &gt; CD4+ / CD8+). Selecting a population in the tree filters the relevant plots and statistics to that subset.
+
+Live-linking is the signature feel: dragging a gate vertex, moving a gate, or changing a transform must instantly recompute all descendant populations, every dependent plot, and every statistic — in real time, smoothly, even on large samples. Add backgating: selecting a leaf population highlights exactly where those events sit within any ancestor plot (&quot;show in parent&quot;). Let users reparent gates by dragging in the tree, and delete/duplicate populations with confirmation where data would be lost.
+
+<span class="done">Done when:</span> drawing a gate creates the correct nested population, the tree reflects the hierarchy, selecting a population filters plots/stats, editing any gate updates everything downstream live, and backgating highlights a child population within its ancestors.</pre>
+    </div><a id="p7"></a>
+    <div class="card reveal">
+      <div class="head">
+        <div class="idx">07</div>
+        <div class="htext">
+          <div class="tags"><span class="tag m">M2 — It quantifies &amp; corrects</span><span class="tag">depends on Prompt 6</span></div>
+          <h3>Statistics engine &amp; table editor</h3>
+        </div>
+        <button class="btn copy" onclick="copyCard(this)">Copy prompt</button>
+      </div>
+      <pre class="prompt">Add population statistics and a spreadsheet-style table for reporting them. For any population, compute and display in the inspector: event count, % of parent, % of total, and per-parameter statistics such as median, mean, geometric mean, robust CV, and percentiles (these are the numbers cytometrists publish; &quot;MFI&quot; usually means the median on the chosen scale). All statistics update live as gates change.
+
+Build a table editor where the user drags populations into rows and statistics into columns (and can pivot to samples-as-rows), producing a clean, sortable, exportable table — the way a researcher assembles a results table across many populations or samples. Support copying to clipboard and exporting to CSV/Excel. Let the user define derived parameters (simple arithmetic/ratios of existing parameters, e.g., a ratio of two markers) that then become usable on plots and in statistics.
+
+<span class="done">Done when:</span> the inspector shows live counts/percentages/MFI for the selected population, I can build a custom statistics table by dragging populations and stats, sort and export it, and create derived parameters that work in plots and stats.</pre>
+    </div><a id="p8"></a>
+    <div class="card reveal">
+      <div class="head">
+        <div class="idx">08</div>
+        <div class="htext">
+          <div class="tags"><span class="tag m">M2 — It quantifies &amp; corrects</span><span class="tag">depends on Prompts 4, 6</span></div>
+          <h3>Compensation editor &amp; spillover QC</h3>
+        </div>
+        <button class="btn copy" onclick="copyCard(this)">Copy prompt</button>
+      </div>
+      <pre class="prompt">Implement compensation for conventional (non-spectral) data: correcting the spillover of each fluorophore&#x27;s signal into other detectors. Let the user view and edit the compensation matrix as a clear, editable grid (rows = source fluorophore, columns = detector), import a matrix embedded in the FCS file, or compute one from single-stain control samples plus an unstained control. Provide an automated compensation option in the spirit of established auto-compensation algorithms, with the result always reviewable and adjustable.
+
+Crucially, provide a spillover quality-control view: an N-by-N grid of small plots for every fluorophore pair so the user can visually confirm populations are neither under- nor over-compensated (the diagonal-skew tell-tale). Changes to the matrix re-compensate the data and update all plots live. Make it obvious which samples a given matrix applies to, and allow per-sample or per-group matrices.
+
+<span class="done">Done when:</span> I can view/edit/import a compensation matrix, compute one from single-stain controls, auto-compensate with reviewable results, and inspect an N-by-N spillover grid where adjustments update all plots live.</pre>
+    </div><a id="p9"></a>
+    <div class="card reveal">
+      <div class="head">
+        <div class="idx">09</div>
+        <div class="htext">
+          <div class="tags"><span class="tag m">M3 — It scales &amp; sees high-dim</span><span class="tag">depends on Prompts 3, 4, 8</span></div>
+          <h3>Spectral unmixing (high-parameter support)</h3>
+        </div>
+        <button class="btn copy" onclick="copyCard(this)">Copy prompt</button>
+      </div>
+      <pre class="prompt">Extend the app to spectral cytometry. Here, instead of one detector per fluorophore, the instrument captures each fluorophore&#x27;s full emission across many detectors as a spectral signature; the software must unmix the mixed spectra into per-fluorophore abundances using reference signatures. Add support for ingesting spectral data, building or importing a reference spectra library (from single-color and autofluorescence controls), and unmixing samples into named fluorophore parameters that then behave like ordinary parameters everywhere else (plottable, gateable, quantifiable).
+
+Include autofluorescence handling (treating cellular autofluorescence as its own signature to extract), a view to inspect and compare spectral signatures, and quality indicators that flag poor unmixing (e.g., similar/colinear spectra). Use the well-understood least-squares family of unmixing methods. Keep unmixing as a first-class, reviewable step in the pipeline, not a hidden conversion.
+
+<span class="done">Done when:</span> I can load spectral data, assemble/import reference signatures including autofluorescence, unmix into named fluorophore parameters usable in all plots and gates, inspect signatures, and see warnings when unmixing quality is questionable.</pre>
+    </div><a id="p10"></a>
+    <div class="card reveal">
+      <div class="head">
+        <div class="idx">10</div>
+        <div class="htext">
+          <div class="tags"><span class="tag m">M3 — It scales &amp; sees high-dim</span><span class="tag">depends on Prompts 5, 6, 7</span></div>
+          <h3>Gating templates &amp; batch apply across samples</h3>
+        </div>
+        <button class="btn copy" onclick="copyCard(this)">Copy prompt</button>
+      </div>
+      <pre class="prompt">Make gating scale to many samples the way a real study requires. Let the user define a gating scheme on one sample and apply it as a template to a whole group of samples at once, so all samples inherit the same hierarchy. Then provide an efficient review-and-adjust workflow: page through every sample seeing the same gate layout, and where a gate doesn&#x27;t fit a particular sample, tailor (nudge) it for that sample only — without breaking the shared template — with tailored samples clearly badged.
+
+Provide a batch view that shows the same plot+gate for every sample in a grid (small multiples) so outliers are obvious at a glance, and a one-click way to recompute all statistics across the group into the table editor. Templates should be saveable and reusable across experiments.
+
+<span class="done">Done when:</span> I can build a gating scheme once, apply it to many samples, flip through them in a consistent layout, tailor individual samples without affecting others, see all samples as small-multiples, and export combined statistics for the whole group.</pre>
+    </div><a id="p11"></a>
+    <div class="card reveal">
+      <div class="head">
+        <div class="idx">11</div>
+        <div class="htext">
+          <div class="tags"><span class="tag m">M3 — It scales &amp; sees high-dim</span><span class="tag">depends on Prompts 4, 6</span></div>
+          <h3>High-dimensional analysis &amp; cluster explorer</h3>
+        </div>
+        <button class="btn copy" onclick="copyCard(this)">Copy prompt</button>
+      </div>
+      <pre class="prompt">Add the high-dimensional toolkit for modern high-parameter and spectral panels. Implement dimensionality-reduction embeddings (UMAP and t-SNE) and automated clustering (a self-organizing-map approach such as FlowSOM, plus a graph-based community-detection clustering option). The user selects which parameters to include, runs the analysis on a chosen population (with sensible event-count sampling for speed), and gets an embedding plot they can gate on like any other plot.
+
+Build a cluster explorer: clusters are shown on the embedding and as a marker-expression heatmap (clusters by markers) so the user can read each cluster&#x27;s phenotype at a glance; selecting a cluster backgates it onto traditional plots and reports its size. Support coloring the embedding by any marker and comparing embeddings across samples/conditions. Run these heavier computations off the main thread with progress and the ability to cancel. Keep results reproducible and recorded in the pipeline.
+
+<span class="done">Done when:</span> I can run UMAP/t-SNE and FlowSOM-style clustering on selected parameters/populations, view a labeled embedding and a cluster-by-marker heatmap, color the embedding by markers, gate and backgate clusters, and the run is reproducible.</pre>
+    </div><a id="p12"></a>
+    <div class="card reveal">
+      <div class="head">
+        <div class="idx">12</div>
+        <div class="htext">
+          <div class="tags"><span class="tag m">M4 — It communicates</span><span class="tag">depends on Prompts 4, 7</span></div>
+          <h3>Layout / figure editor &amp; publication export</h3>
+        </div>
+        <button class="btn copy" onclick="copyCard(this)">Copy prompt</button>
+      </div>
+      <pre class="prompt">Build a dedicated layout editor for assembling publication-ready figures — a strength to match and beat FCS Express. On a freeform page canvas, the user drags in live data tiles (any plot, with its gates and statistics), text labels, titles, legends, arrows, and shapes, then arranges, aligns, and resizes them with snapping and alignment guides. Tiles stay linked to the underlying data, so if a gate changes, the figure updates.
+
+Support precise control of plot appearance for figures (fonts, axis ranges, tick density, colors, line weights, gate styling), picture-in-picture / inset plots, and consistent styling applied across tiles. Export at publication quality to vector (PDF/SVG) and high-resolution raster (PNG/TIFF), plus an option to export each plot individually. Allow saving layout templates for reuse.
+
+<span class="done">Done when:</span> I can assemble a multi-panel figure from live plots with text/annotations, align and style everything precisely, have it update when data changes, and export crisp vector and high-resolution images plus reusable layout templates.</pre>
+    </div><a id="p13"></a>
+    <div class="card reveal">
+      <div class="head">
+        <div class="idx">13</div>
+        <div class="htext">
+          <div class="tags"><span class="tag m">M4 — It communicates</span><span class="tag">depends on Prompts 5–11</span></div>
+          <h3>Reproducible pipeline, reports &amp; data export</h3>
+        </div>
+        <button class="btn copy" onclick="copyCard(this)">Copy prompt</button>
+      </div>
+      <pre class="prompt">Make every analysis reproducible and reportable. Record every meaningful action — transforms, compensation/unmixing, each gate, derived parameters, clustering runs — as an ordered, human-readable pipeline/history that can be reviewed, and replayed on new data. Surface this as a clear timeline the user can inspect and step back through (undo/redo throughout the app should tie into it).
+
+Add report generation: a one-click summary of an experiment or sample including the gating hierarchy, key plots, and the statistics table, exportable to PDF. Support data export in useful forms: gated populations as new FCS files, event tables as CSV/Parquet, statistics as CSV/Excel, and the gating definition in the interoperable GatingML standard so other tools can read it.
+
+<span class="done">Done when:</span> I can view and step through a complete action history, replay a pipeline on another sample, generate a PDF report of an experiment, and export gated FCS files, statistics tables, and a standards-based gating definition.</pre>
+    </div><a id="p14"></a>
+    <div class="card reveal">
+      <div class="head">
+        <div class="idx">14</div>
+        <div class="htext">
+          <div class="tags"><span class="tag m">M4 — It communicates</span><span class="tag">depends on Prompt 13</span></div>
+          <h3>Collaboration, workspace files &amp; interoperability</h3>
+        </div>
+        <button class="btn copy" onclick="copyCard(this)">Copy prompt</button>
+      </div>
+      <pre class="prompt">Enable saving, sharing, and interchange. Define a workspace file that captures the entire experiment — sample references (by path and content hash, never duplicating raw data), the full pipeline, gates, layouts, and settings — so a colleague can open the same workspace and pick up exactly where it left off. Make open/save robust, with autosave and recovery.
+
+Add interoperability: import gating from and export gating to the GatingML standard, and best-effort import of FlowJo and Cytobank workspaces (using the established interchange tooling) so users can migrate existing work. Provide a lightweight sharing/collaboration path appropriate for a desktop app: export a self-contained shareable package, and (optionally, behind a setting) sync a workspace to a shared location with a simple change log so a small team can hand work back and forth. Keep an audit trail of who changed what when, which also lays groundwork for a future clinical mode.
+
+<span class="done">Done when:</span> I can save/reopen a complete workspace that references rather than copies raw files, recover from a crash via autosave, import/export GatingML, import existing FlowJo/Cytobank work, share a self-contained package, and review an audit log of changes.</pre>
+    </div><a id="p15"></a>
+    <div class="card reveal">
+      <div class="head">
+        <div class="idx">15</div>
+        <div class="htext">
+          <div class="tags"><span class="tag m">M5 — It ships</span><span class="tag">depends on Prompts 0–14</span></div>
+          <h3>Onboarding, sample data, accessibility &amp; polish</h3>
+        </div>
+        <button class="btn copy" onclick="copyCard(this)">Copy prompt</button>
+      </div>
+      <pre class="prompt">Make the first five minutes delightful and the whole app accessible. Add a welcome/onboarding flow with bundled sample datasets (a conventional panel and a spectral/high-parameter panel) so a new user can explore gating, compensation, and clustering without their own files. Include friendly, illustrated empty states (no samples loaded; no gates yet) and inline coach-marks for the core gestures (draw a gate, view a population, build a stats table).
+
+Polish pass: keyboard shortcuts for every common action with a discoverable cheat-sheet, full VoiceOver/accessibility support and sufficient color contrast (including non-color cues for colorblind users in plots and gates), graceful and specific error messages, helpful tooltips, and consistent loading/progress affordances. Ensure performance stays smooth with several large samples open at once, and tune memory use for big files.
+
+<span class="done">Done when:</span> a brand-new user can open bundled sample data and complete gate -&gt; population -&gt; statistics within minutes guided by onboarding, the app is navigable via keyboard and screen reader with colorblind-safe visuals, errors are clear, and it stays responsive with multiple large samples loaded.</pre>
+    </div><a id="p16"></a>
+    <div class="card reveal">
+      <div class="head">
+        <div class="idx">16</div>
+        <div class="htext">
+          <div class="tags"><span class="tag m">M5 — It ships</span><span class="tag">depends on Prompt 14</span></div>
+          <h3>Clinical / compliance mode (optional)</h3>
+        </div>
+        <button class="btn copy" onclick="copyCard(this)">Copy prompt</button>
+      </div>
+      <pre class="prompt">Add an optional clinical mode (off by default; enabled per-installation) that brings the regulated-environment features clinical labs need — in the spirit of FCS Express&#x27;s compliance support. When enabled: enforce user accounts with authentication and roles, capture an immutable audit trail of every action with timestamps and user identity, support electronic signatures on reports and locked analyses, allow locking/finalizing an analysis so it can no longer be altered (only versioned), and produce compliance-oriented exports. Provide configuration for retention and access controls.
+
+Keep this cleanly separated so it never complicates the default research experience, and document clearly that compliance is a shared responsibility between the software configuration and the lab&#x27;s procedures.
+
+<span class="done">Done when:</span> with clinical mode enabled I get authenticated roles, a complete immutable audit trail, electronic signatures on reports, the ability to lock/finalize analyses, and compliance exports — while the default (research) mode remains unchanged and uncluttered.</pre>
+    </div>
+      </div>
+      <pre id="allprompts" style="display:none">===== PROMPT 0 — Vision, scope &amp; guardrails (Foundation; depends on Run first) =====
+
+You are building CytoStudio, a native-feeling macOS desktop application for flow cytometry analysis. Its mission is to combine the best of three existing tools: the population-hierarchy gating workspace and &quot;apply one gating scheme to many samples&quot; model of FlowJo; the live-linked, publication-quality visualization and figure-layout craft of FCS Express; and the high-dimensional analysis (UMAP / t-SNE / FlowSOM) plus collaboration and reproducibility of Cytobank.
+
+Non-negotiable qualities, in priority order: (1) manual gating must feel as fluid as a drawing app, with everything live-linked so adjusting a gate instantly updates every dependent plot and statistic; (2) it must stay fast and responsive on samples with millions of events; (3) it must look and behave like a first-class macOS app (light/dark mode, system fonts, trackpad gestures, native window behavior); (4) it must eventually handle spectral / high-parameter data and automated clustering.
+
+You choose the languages, frameworks, and libraries — pick whatever best delivers native macOS polish and the performance to render millions of points smoothly, while letting you reuse the mature scientific cytometry ecosystem for correct math (transforms, compensation, clustering) rather than reinventing it. Favor a clean separation between a fast data/rendering core and the scientific algorithms.
+
+Set up the project skeleton, a component/design-system foundation themed to Apple&#x27;s Human Interface Guidelines with a signature teal-cyan accent, app-wide light/dark support, and a placeholder three-pane window (left sidebar, center canvas, right inspector, top toolbar, bottom status bar). Establish a single source of truth for application state so that data, gates, plots, and statistics can all stay synchronized automatically. Deliver a running, empty app I can launch. Document your stack choices and why in a README.
+
+Done when: the app launches on macOS, shows the three-pane shell in both light and dark mode, the window behaves natively, and the README explains the architecture and how to run it.
+
+
+===== PROMPT 1 — App shell, navigation &amp; design system (M1 — It gates; depends on Prompt 0) =====
+
+Flesh out the application shell and design system. Build the three-pane workspace: a left rail that splits into a sample/experiment browser (top) and a population hierarchy tree (bottom); a center canvas that will hold a freeform arrangement of plots; a right inspector that shows context-sensitive properties and statistics; a top toolbar for tools and actions; and a bottom status bar showing total event count and workspace status.
+
+The chrome should be quiet and monochrome so that all color lives inside the data later. Add full keyboard navigation, a Command-K command palette to jump to any sample/gate/parameter/action, standard macOS menus, and trackpad gestures wired up as no-ops for now (pinch, two-finger pan) so plots can adopt them later. Panels should be resizable and collapsible; the layout state should persist between launches.
+
+Done when: I can resize/collapse panels, the layout persists across relaunch, the command palette opens with Command-K and can focus each region, and the whole thing feels like a native Mac app in both appearance modes.
+
+
+===== PROMPT 2 — FCS import, metadata &amp; experiment manager (M1 — It gates; depends on Prompts 0–1) =====
+
+Implement loading of cytometry data files (FCS 3.0 and 3.1 to start; structure it so raw spectral formats can be added later). The user can drag-and-drop files or folders, or open them via the menu. On import, read every event and every parameter, plus the file&#x27;s embedded metadata (keywords) such as the parameter names, detector/fluorophore labels, instrument, operator, acquisition date, and any existing compensation matrix stored in the file.
+
+Organize files into an Experiment containing Samples, with the ability to group samples (e.g., by condition or timepoint) by drag-and-drop in the left browser. Show each sample&#x27;s key metadata in the inspector when selected. Display friendly parameter names (the marker/fluorophore label) everywhere, while keeping the raw channel name available. Handle large files gracefully — show progress, never freeze the UI, and be ready to work with files too big to hold fully in memory.
+
+Done when: I can drag in multiple FCS files, see them listed and groupable, inspect each sample&#x27;s metadata and parameter list with human-readable marker names, and large files import with visible progress and no UI freeze.
+
+
+===== PROMPT 3 — Data transforms &amp; per-axis scaling (M1 — It gates; depends on Prompt 2) =====
+
+Add the data transforms that make populations visually separable. Because fluorescence intensity spans several orders of magnitude and can become negative after spillover correction, a plain logarithmic scale is inadequate. Implement the standard cytometry scales: biexponential / logicle (linear near zero, logarithmic far from it), arcsinh (for high-parameter and spectral data), plain log, and linear. Match the established, validated behavior of these transforms used across the field — correctness matters because biologists make gating decisions on these axes.
+
+Each plot axis can independently choose its scale and adjust the relevant parameters (e.g., the width / linear-region of a biexponential, the cofactor of an arcsinh) via simple, well-labeled controls in the inspector, with sensible auto-computed defaults per parameter. Provide an obvious &quot;reset to default scaling&quot; action. Changing a scale must update the plot live.
+
+Done when: I can switch any axis between linear, log, biexponential/logicle, and arcsinh; negative post-compensation values display correctly; defaults look reasonable automatically; and adjustments update the view instantly.
+
+
+===== PROMPT 4 — The plot canvas (the visual heart) (M1 — It gates; depends on Prompts 3, 4) =====
+
+Build the plotting system — this is where the app earns its reputation, so it must be both beautiful and fast on millions of events. Support these plot types: 2D scatter (dot) plot, density plot (color-mapped by event density), contour plot, pseudocolor, zebra/contour hybrids, and 1D histograms. Default to a perceptually-uniform density colormap with classic alternatives available.
+
+Plots live on the center canvas in a freeform, rearrangeable grid; the user can add a plot, pick its X and Y parameters (X only for histograms), resize and move it, and zoom/pan it (including trackpad pinch and two-finger pan). For very large samples, render so the app stays at a smooth frame rate — aggregate or down-represent points as needed so the experience never stutters, while still looking like real data. Support overlays: dropping one population&#x27;s data onto a plot overlays it as a tinted contour or histogram for direct comparison, with a clear legend. Axes show human-readable marker names and the chosen scale.
+
+Done when: I can create scatter/density/contour/histogram plots, choose parameters, rearrange and zoom them fluidly even with millions of events, overlay multiple populations with a legend, and everything looks publication-clean.
+
+
+===== PROMPT 5 — Manual gating tools &amp; drawing UX (M1 — It gates; depends on Prompt 4) =====
+
+Implement manual gating — the most-used interaction — so it feels like a precise, forgiving drawing app. Provide these gate tools in the toolbar: rectangle, polygon (click to place vertices, double-click / enter to close), ellipse, quadrant (splits a plot into four by a draggable crosshair), interval (a range gate on a histogram), and freehand / spline lasso. Also support boolean gates (AND / OR / NOT combinations of existing gates).
+
+Drawing mechanics: gates are drawn directly on a plot; vertices and edges are draggable after creation; the whole gate can be moved or resized; gates can be renamed inline and recolored. Snapping and nudge-with-arrow-keys help precision. Each gate visibly animates its fill on creation and shows its population&#x27;s percentage right on the plot. Every gate is bound to the plot&#x27;s two parameters, so a gate &quot;means&quot; a region in that 2D space.
+
+Done when: I can draw and edit every gate type directly on plots, drag vertices to reshape, create boolean gates from existing ones, rename/recolor them, and each gate shows its population percentage on the plot.
+
+
+===== PROMPT 6 — Population hierarchy, live-linking &amp; backgating (M1 — It gates; depends on Prompt 5) =====
+
+Connect gates into a population hierarchy and make the whole app live-linked. When a gate is drawn inside a population&#x27;s plot, it creates a child population that contains only the parent&#x27;s events that fall inside the gate; this nesting is shown as an indented tree in the left rail (e.g., Cells &gt; Single Cells &gt; Live &gt; CD3+ &gt; CD4+ / CD8+). Selecting a population in the tree filters the relevant plots and statistics to that subset.
+
+Live-linking is the signature feel: dragging a gate vertex, moving a gate, or changing a transform must instantly recompute all descendant populations, every dependent plot, and every statistic — in real time, smoothly, even on large samples. Add backgating: selecting a leaf population highlights exactly where those events sit within any ancestor plot (&quot;show in parent&quot;). Let users reparent gates by dragging in the tree, and delete/duplicate populations with confirmation where data would be lost.
+
+Done when: drawing a gate creates the correct nested population, the tree reflects the hierarchy, selecting a population filters plots/stats, editing any gate updates everything downstream live, and backgating highlights a child population within its ancestors.
+
+
+===== PROMPT 7 — Statistics engine &amp; table editor (M2 — It quantifies &amp; corrects; depends on Prompt 6) =====
+
+Add population statistics and a spreadsheet-style table for reporting them. For any population, compute and display in the inspector: event count, % of parent, % of total, and per-parameter statistics such as median, mean, geometric mean, robust CV, and percentiles (these are the numbers cytometrists publish; &quot;MFI&quot; usually means the median on the chosen scale). All statistics update live as gates change.
+
+Build a table editor where the user drags populations into rows and statistics into columns (and can pivot to samples-as-rows), producing a clean, sortable, exportable table — the way a researcher assembles a results table across many populations or samples. Support copying to clipboard and exporting to CSV/Excel. Let the user define derived parameters (simple arithmetic/ratios of existing parameters, e.g., a ratio of two markers) that then become usable on plots and in statistics.
+
+Done when: the inspector shows live counts/percentages/MFI for the selected population, I can build a custom statistics table by dragging populations and stats, sort and export it, and create derived parameters that work in plots and stats.
+
+
+===== PROMPT 8 — Compensation editor &amp; spillover QC (M2 — It quantifies &amp; corrects; depends on Prompts 4, 6) =====
+
+Implement compensation for conventional (non-spectral) data: correcting the spillover of each fluorophore&#x27;s signal into other detectors. Let the user view and edit the compensation matrix as a clear, editable grid (rows = source fluorophore, columns = detector), import a matrix embedded in the FCS file, or compute one from single-stain control samples plus an unstained control. Provide an automated compensation option in the spirit of established auto-compensation algorithms, with the result always reviewable and adjustable.
+
+Crucially, provide a spillover quality-control view: an N-by-N grid of small plots for every fluorophore pair so the user can visually confirm populations are neither under- nor over-compensated (the diagonal-skew tell-tale). Changes to the matrix re-compensate the data and update all plots live. Make it obvious which samples a given matrix applies to, and allow per-sample or per-group matrices.
+
+Done when: I can view/edit/import a compensation matrix, compute one from single-stain controls, auto-compensate with reviewable results, and inspect an N-by-N spillover grid where adjustments update all plots live.
+
+
+===== PROMPT 9 — Spectral unmixing (high-parameter support) (M3 — It scales &amp; sees high-dim; depends on Prompts 3, 4, 8) =====
+
+Extend the app to spectral cytometry. Here, instead of one detector per fluorophore, the instrument captures each fluorophore&#x27;s full emission across many detectors as a spectral signature; the software must unmix the mixed spectra into per-fluorophore abundances using reference signatures. Add support for ingesting spectral data, building or importing a reference spectra library (from single-color and autofluorescence controls), and unmixing samples into named fluorophore parameters that then behave like ordinary parameters everywhere else (plottable, gateable, quantifiable).
+
+Include autofluorescence handling (treating cellular autofluorescence as its own signature to extract), a view to inspect and compare spectral signatures, and quality indicators that flag poor unmixing (e.g., similar/colinear spectra). Use the well-understood least-squares family of unmixing methods. Keep unmixing as a first-class, reviewable step in the pipeline, not a hidden conversion.
+
+Done when: I can load spectral data, assemble/import reference signatures including autofluorescence, unmix into named fluorophore parameters usable in all plots and gates, inspect signatures, and see warnings when unmixing quality is questionable.
+
+
+===== PROMPT 10 — Gating templates &amp; batch apply across samples (M3 — It scales &amp; sees high-dim; depends on Prompts 5, 6, 7) =====
+
+Make gating scale to many samples the way a real study requires. Let the user define a gating scheme on one sample and apply it as a template to a whole group of samples at once, so all samples inherit the same hierarchy. Then provide an efficient review-and-adjust workflow: page through every sample seeing the same gate layout, and where a gate doesn&#x27;t fit a particular sample, tailor (nudge) it for that sample only — without breaking the shared template — with tailored samples clearly badged.
+
+Provide a batch view that shows the same plot+gate for every sample in a grid (small multiples) so outliers are obvious at a glance, and a one-click way to recompute all statistics across the group into the table editor. Templates should be saveable and reusable across experiments.
+
+Done when: I can build a gating scheme once, apply it to many samples, flip through them in a consistent layout, tailor individual samples without affecting others, see all samples as small-multiples, and export combined statistics for the whole group.
+
+
+===== PROMPT 11 — High-dimensional analysis &amp; cluster explorer (M3 — It scales &amp; sees high-dim; depends on Prompts 4, 6) =====
+
+Add the high-dimensional toolkit for modern high-parameter and spectral panels. Implement dimensionality-reduction embeddings (UMAP and t-SNE) and automated clustering (a self-organizing-map approach such as FlowSOM, plus a graph-based community-detection clustering option). The user selects which parameters to include, runs the analysis on a chosen population (with sensible event-count sampling for speed), and gets an embedding plot they can gate on like any other plot.
+
+Build a cluster explorer: clusters are shown on the embedding and as a marker-expression heatmap (clusters by markers) so the user can read each cluster&#x27;s phenotype at a glance; selecting a cluster backgates it onto traditional plots and reports its size. Support coloring the embedding by any marker and comparing embeddings across samples/conditions. Run these heavier computations off the main thread with progress and the ability to cancel. Keep results reproducible and recorded in the pipeline.
+
+Done when: I can run UMAP/t-SNE and FlowSOM-style clustering on selected parameters/populations, view a labeled embedding and a cluster-by-marker heatmap, color the embedding by markers, gate and backgate clusters, and the run is reproducible.
+
+
+===== PROMPT 12 — Layout / figure editor &amp; publication export (M4 — It communicates; depends on Prompts 4, 7) =====
+
+Build a dedicated layout editor for assembling publication-ready figures — a strength to match and beat FCS Express. On a freeform page canvas, the user drags in live data tiles (any plot, with its gates and statistics), text labels, titles, legends, arrows, and shapes, then arranges, aligns, and resizes them with snapping and alignment guides. Tiles stay linked to the underlying data, so if a gate changes, the figure updates.
+
+Support precise control of plot appearance for figures (fonts, axis ranges, tick density, colors, line weights, gate styling), picture-in-picture / inset plots, and consistent styling applied across tiles. Export at publication quality to vector (PDF/SVG) and high-resolution raster (PNG/TIFF), plus an option to export each plot individually. Allow saving layout templates for reuse.
+
+Done when: I can assemble a multi-panel figure from live plots with text/annotations, align and style everything precisely, have it update when data changes, and export crisp vector and high-resolution images plus reusable layout templates.
+
+
+===== PROMPT 13 — Reproducible pipeline, reports &amp; data export (M4 — It communicates; depends on Prompts 5–11) =====
+
+Make every analysis reproducible and reportable. Record every meaningful action — transforms, compensation/unmixing, each gate, derived parameters, clustering runs — as an ordered, human-readable pipeline/history that can be reviewed, and replayed on new data. Surface this as a clear timeline the user can inspect and step back through (undo/redo throughout the app should tie into it).
+
+Add report generation: a one-click summary of an experiment or sample including the gating hierarchy, key plots, and the statistics table, exportable to PDF. Support data export in useful forms: gated populations as new FCS files, event tables as CSV/Parquet, statistics as CSV/Excel, and the gating definition in the interoperable GatingML standard so other tools can read it.
+
+Done when: I can view and step through a complete action history, replay a pipeline on another sample, generate a PDF report of an experiment, and export gated FCS files, statistics tables, and a standards-based gating definition.
+
+
+===== PROMPT 14 — Collaboration, workspace files &amp; interoperability (M4 — It communicates; depends on Prompt 13) =====
+
+Enable saving, sharing, and interchange. Define a workspace file that captures the entire experiment — sample references (by path and content hash, never duplicating raw data), the full pipeline, gates, layouts, and settings — so a colleague can open the same workspace and pick up exactly where it left off. Make open/save robust, with autosave and recovery.
+
+Add interoperability: import gating from and export gating to the GatingML standard, and best-effort import of FlowJo and Cytobank workspaces (using the established interchange tooling) so users can migrate existing work. Provide a lightweight sharing/collaboration path appropriate for a desktop app: export a self-contained shareable package, and (optionally, behind a setting) sync a workspace to a shared location with a simple change log so a small team can hand work back and forth. Keep an audit trail of who changed what when, which also lays groundwork for a future clinical mode.
+
+Done when: I can save/reopen a complete workspace that references rather than copies raw files, recover from a crash via autosave, import/export GatingML, import existing FlowJo/Cytobank work, share a self-contained package, and review an audit log of changes.
+
+
+===== PROMPT 15 — Onboarding, sample data, accessibility &amp; polish (M5 — It ships; depends on Prompts 0–14) =====
+
+Make the first five minutes delightful and the whole app accessible. Add a welcome/onboarding flow with bundled sample datasets (a conventional panel and a spectral/high-parameter panel) so a new user can explore gating, compensation, and clustering without their own files. Include friendly, illustrated empty states (no samples loaded; no gates yet) and inline coach-marks for the core gestures (draw a gate, view a population, build a stats table).
+
+Polish pass: keyboard shortcuts for every common action with a discoverable cheat-sheet, full VoiceOver/accessibility support and sufficient color contrast (including non-color cues for colorblind users in plots and gates), graceful and specific error messages, helpful tooltips, and consistent loading/progress affordances. Ensure performance stays smooth with several large samples open at once, and tune memory use for big files.
+
+Done when: a brand-new user can open bundled sample data and complete gate -&gt; population -&gt; statistics within minutes guided by onboarding, the app is navigable via keyboard and screen reader with colorblind-safe visuals, errors are clear, and it stays responsive with multiple large samples loaded.
+
+
+===== PROMPT 16 — Clinical / compliance mode (optional) (M5 — It ships; depends on Prompt 14) =====
+
+Add an optional clinical mode (off by default; enabled per-installation) that brings the regulated-environment features clinical labs need — in the spirit of FCS Express&#x27;s compliance support. When enabled: enforce user accounts with authentication and roles, capture an immutable audit trail of every action with timestamps and user identity, support electronic signatures on reports and locked analyses, allow locking/finalizing an analysis so it can no longer be altered (only versioned), and produce compliance-oriented exports. Provide configuration for retention and access controls.
+
+Keep this cleanly separated so it never complicates the default research experience, and document clearly that compliance is a shared responsibility between the software configuration and the lab&#x27;s procedures.
+
+Done when: with clinical mode enabled I get authenticated roles, a complete immutable audit trail, electronic signatures on reports, the ability to lock/finalize analyses, and compliance exports — while the default (research) mode remains unchanged and uncluttered.</pre>
+    </section>
+
+    <section id="sequence">
+      <p class="eyebrow">Plan</p>
+      <h2 class="sec serif">Build sequence &amp; milestones</h2>
+      <p class="lead">Later prompts assume earlier ones exist. Ship a usable product at M1, then build outward.</p>
+      <div class="grid g2" style="margin-bottom:22px"><div class="tile reveal"><h4>M1 — It gates</h4><p><span class="ms">Prompts 0–6</span><br>Load FCS, transform, plot fast, draw gates, live hierarchy. Already a usable, impressive product.</p></div><div class="tile reveal"><h4>M2 — It quantifies &amp; corrects</h4><p><span class="ms">7–8</span><br>Statistics tables + compensation. Research-credible.</p></div><div class="tile reveal"><h4>M3 — It scales &amp; sees high-dim</h4><p><span class="ms">9–11</span><br>Spectral, batch templates, UMAP/FlowSOM. Rivals Cytobank.</p></div><div class="tile reveal"><h4>M4 — It communicates</h4><p><span class="ms">12–14</span><br>Figures, reproducibility, sharing/interop. Rivals FCS Express + FlowJo.</p></div><div class="tile reveal"><h4>M5 — It ships</h4><p><span class="ms">15–16</span><br>Polish, onboarding, optional compliance.</p></div></div>
+      <div class="steps"><div class="step reveal"><b>Prompt 00 — Vision, scope &amp; guardrails</b> · Foundation</div><div class="step reveal"><b>Prompt 01 — App shell, navigation &amp; design system</b> · M1 — It gates</div><div class="step reveal"><b>Prompt 02 — FCS import, metadata &amp; experiment manager</b> · M1 — It gates</div><div class="step reveal"><b>Prompt 03 — Data transforms &amp; per-axis scaling</b> · M1 — It gates</div><div class="step reveal"><b>Prompt 04 — The plot canvas (the visual heart)</b> · M1 — It gates</div><div class="step reveal"><b>Prompt 05 — Manual gating tools &amp; drawing UX</b> · M1 — It gates</div><div class="step reveal"><b>Prompt 06 — Population hierarchy, live-linking &amp; backgating</b> · M1 — It gates</div><div class="step reveal"><b>Prompt 07 — Statistics engine &amp; table editor</b> · M2 — It quantifies &amp; corrects</div><div class="step reveal"><b>Prompt 08 — Compensation editor &amp; spillover QC</b> · M2 — It quantifies &amp; corrects</div><div class="step reveal"><b>Prompt 09 — Spectral unmixing (high-parameter support)</b> · M3 — It scales &amp; sees high-dim</div><div class="step reveal"><b>Prompt 10 — Gating templates &amp; batch apply across samples</b> · M3 — It scales &amp; sees high-dim</div><div class="step reveal"><b>Prompt 11 — High-dimensional analysis &amp; cluster explorer</b> · M3 — It scales &amp; sees high-dim</div><div class="step reveal"><b>Prompt 12 — Layout / figure editor &amp; publication export</b> · M4 — It communicates</div><div class="step reveal"><b>Prompt 13 — Reproducible pipeline, reports &amp; data export</b> · M4 — It communicates</div><div class="step reveal"><b>Prompt 14 — Collaboration, workspace files &amp; interoperability</b> · M4 — It communicates</div><div class="step reveal"><b>Prompt 15 — Onboarding, sample data, accessibility &amp; polish</b> · M5 — It ships</div><div class="step reveal"><b>Prompt 16 — Clinical / compliance mode (optional)</b> · M5 — It ships</div></div>
+    </section>
+
+    <footer>
+      CytoStudio is a placeholder name — rename freely. This package: <span class="mono">index.html</span> · <span class="mono">/prompts/00–16</span> · master markdown · README.<br>
+      Generated as a planning blueprint. Verify library choices and regulatory requirements against current sources before building.
+    </footer>
+  </main>
+</div></div>
+
+<script>
+const obs=new IntersectionObserver((es)=>{es.forEach(e=>{const id=e.target.id;
+  const link=document.querySelector('.toc a[href="#'+id+'"]');if(!link)return;
+  if(e.isIntersecting){document.querySelectorAll('.toc a').forEach(a=>a.classList.remove('active'));link.classList.add('active');}});},
+  {rootMargin:'-45% 0px -50% 0px'});
+document.querySelectorAll('section[id]').forEach(s=>obs.observe(s));
+function copyEl(el,btn){const t=el.innerText;navigator.clipboard.writeText(t).then(()=>{
+  const o=btn.textContent;btn.textContent='Copied ✓';setTimeout(()=>btn.textContent=o,1400);});}
+function copyCard(btn){copyEl(btn.closest('.card').querySelector('.prompt'),btn);}
+function copyImg(btn){copyEl(btn.parentElement.parentElement.querySelector('p'),btn);}
+function copyAll(btn){copyEl(document.getElementById('allprompts'),btn);}
+// scatter dots in schematic
+function seed(el,n,hues){for(let i=0;i<n;i++){const s=document.createElement('span');
+  const cx=Math.pow(Math.random(),.7);const cy=Math.pow(Math.random(),.7);
+  s.style.left=(10+cx*78)+'%';s.style.top=(8+cy*80)+'%';
+  const h=hues[Math.floor(Math.random()*hues.length)];s.style.background=h;
+  s.style.opacity=(.25+Math.random()*.6).toFixed(2);el.appendChild(s);}}
+document.querySelectorAll('.scatter').forEach(e=>seed(e,90,['#2ee6c9','#19b89f','#ffb454','#ff8d6b']));
+</script>
+</body></html>
