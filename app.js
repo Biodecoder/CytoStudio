@@ -45,9 +45,19 @@ const state = {
     },
     quality: []
   },
+  templates: [
+    { id: "tcell-panel", name: "T-cell panel", sourceSample: "s1", version: 1, savedAt: "2026-06-01", populations: 8, gates: 4 }
+  ],
+  batch: {
+    group: "Treatment A",
+    templateId: "tcell-panel",
+    reviewIndex: 0,
+    combinedRows: [],
+    lastRecomputed: "not run"
+  },
   samples: [
-    { id: "s1", name: "PBMC Panel.fcs", events: 10432912, group: "Treatment A", status: "ready", metadata: { instrument: "Aurora CS", operator: "Core Facility", acquired: "2026-06-01", compensation: "Imported 8x8", keywords: 412 } },
-    { id: "s2", name: "Donor 02 Restim.fcs", events: 8945102, group: "Treatment A", status: "ready", metadata: { instrument: "Aurora CS", operator: "Core Facility", acquired: "2026-05-31", compensation: "Group matrix", keywords: 397 } },
+    { id: "s1", name: "PBMC Panel.fcs", events: 10432912, group: "Treatment A", status: "ready", templateId: "tcell-panel", metadata: { instrument: "Aurora CS", operator: "Core Facility", acquired: "2026-06-01", compensation: "Imported 8x8", keywords: 412 } },
+    { id: "s2", name: "Donor 02 Restim.fcs", events: 8945102, group: "Treatment A", status: "ready", templateId: "tcell-panel", metadata: { instrument: "Aurora CS", operator: "Core Facility", acquired: "2026-05-31", compensation: "Group matrix", keywords: 397 } },
     { id: "s3", name: "Donor 03 Control.fcs", events: 7203314, group: "Control", status: "ready", metadata: { instrument: "LSRFortessa", operator: "Clinical Lab", acquired: "2026-05-30", compensation: "Needs review", keywords: 355 } }
   ],
   populations: [
@@ -158,15 +168,34 @@ function selectedSample() {
   return state.samples.find(s => s.id === state.selectedSample);
 }
 
-function populationCount(popOrId) {
+function activeTemplate() {
+  return state.templates.find(template => template.id === state.batch.templateId) || state.templates[0];
+}
+
+function sampleTemplateLabel(sample) {
+  const template = activeTemplate();
+  if (!template || sample.templateId !== template.id) return null;
+  const tailored = sample.tailoredTemplates?.includes(template.id);
+  return { label: tailored ? "tailored" : "template", className: tailored ? "sample-badge tailored" : "sample-badge linked" };
+}
+
+function batchGroupSamples() {
+  return state.samples.filter(sample => sample.group === state.batch.group);
+}
+
+function selectedBatchSample() {
+  const samples = batchGroupSamples();
+  if (!samples.length) return selectedSample();
+  return samples[Math.max(0, Math.min(samples.length - 1, state.batch.reviewIndex))];
+}
+
+function populationCount(popOrId, sample = selectedSample()) {
   const pop = typeof popOrId === "string" ? population(popOrId) : popOrId;
-  const sample = selectedSample();
   return sample?.populationCounts?.[pop.id] ?? pop.count;
 }
 
-function setPopulationCount(popOrId, count) {
+function setPopulationCount(popOrId, count, sample = selectedSample()) {
   const pop = typeof popOrId === "string" ? population(popOrId) : popOrId;
-  const sample = selectedSample();
   if (!sample.populationCounts) sample.populationCounts = {};
   sample.populationCounts[pop.id] = Math.max(0, Math.round(count));
 }
@@ -175,17 +204,16 @@ function plot(id) {
   return state.plots.find(p => p.id === id);
 }
 
-function activeEvents() {
-  const sample = selectedSample();
+function activeEvents(sample = selectedSample()) {
   const baseEvents = sample?.parsedEvents?.length ? sample.parsedEvents : syntheticEvents;
   return unmixedEvents(compensatedEvents(baseEvents, sample), sample);
 }
 
 function compensatedEvents(baseEvents, sample = selectedSample()) {
-  const comp = currentCompensation();
+  const comp = currentCompensation(sample);
   if (!comp.enabled) return baseEvents;
   if (sample && sample.compensatedVersion === comp.version && sample.compensatedEvents) return sample.compensatedEvents;
-  const events = baseEvents.map(event => compensateEvent(event));
+  const events = baseEvents.map(event => compensateEvent(event, comp));
   if (sample) {
     sample.compensatedVersion = comp.version;
     sample.compensatedEvents = events;
@@ -193,8 +221,7 @@ function compensatedEvents(baseEvents, sample = selectedSample()) {
   return events;
 }
 
-function compensateEvent(event) {
-  const comp = currentCompensation();
+function compensateEvent(event, comp = currentCompensation()) {
   const channels = comp.channels.filter(id => Number.isFinite(event[id]));
   if (!channels.length) return event;
   const corrected = { ...event };
@@ -209,8 +236,8 @@ function compensateEvent(event) {
   return corrected;
 }
 
-function currentCompensation() {
-  return selectedSample()?.compensation || state.compensation;
+function currentCompensation(sample = selectedSample()) {
+  return sample?.compensation || state.compensation;
 }
 
 function invalidateCompensation() {
@@ -265,9 +292,8 @@ function invalidateSpectral() {
   });
 }
 
-function activeEventScale() {
-  const sample = selectedSample();
-  const events = activeEvents();
+function activeEventScale(sample = selectedSample()) {
+  const events = activeEvents(sample);
   return events.length ? sample.events / events.length : 1;
 }
 
@@ -323,7 +349,8 @@ function renderSamples() {
     const row = document.createElement("button");
     row.className = `row ${sample.id === state.selectedSample ? "active" : ""}`;
     const parsedBadge = sample.parsed ? " · parsed FCS" : "";
-    row.innerHTML = `<span class="dot" style="background:${colors[idx % colors.length]}"></span><span>${sample.name}<br><small>${sample.group} · ${sample.metadata.instrument}${parsedBadge}</small></span><span class="count">${fmt(sample.events)}</span>`;
+    const templateBadge = sampleTemplateLabel(sample);
+    row.innerHTML = `<span class="dot" style="background:${colors[idx % colors.length]}"></span><span>${sample.name}<br><small>${sample.group} · ${sample.metadata.instrument}${parsedBadge}</small></span><span class="count">${fmt(sample.events)}${templateBadge ? `<br><em class="${templateBadge.className}">${templateBadge.label}</em>` : ""}</span>`;
     row.addEventListener("click", () => {
       state.selectedSample = sample.id;
       addHistory(`Selected sample ${sample.name}`);
@@ -392,6 +419,7 @@ function renderView() {
   requestAnimationFrame(() => {
     drawMiniPlots();
     drawSurfaceCanvases();
+    drawBatchCanvases();
   });
 }
 
@@ -412,8 +440,9 @@ function plotCardHTML(p) {
     </article>`;
 }
 
-function gateSVG(plotId) {
-  return state.gates.filter(g => g.plot === plotId).map(g => {
+function gateSVG(plotId, sample = selectedSample()) {
+  return state.gates.filter(g => g.plot === plotId).map(gate => {
+    const g = effectiveGateForSample(gate, sample);
     if (g.type === "rectangle") {
       return `<rect class="gate-shape" x="${g.x1 * 100}%" y="${g.y1 * 100}%" width="${(g.x2 - g.x1) * 100}%" height="${(g.y2 - g.y1) * 100}%"></rect><text class="gate-label" x="${(g.x1 + 0.02) * 100}%" y="${(g.y1 + 0.08) * 100}%">${g.label}</text>`;
     }
@@ -585,8 +614,14 @@ function smoothBins(source, scale = 1, shift = 0) {
   });
 }
 
-function gateForPopulation(populationId) {
-  return state.gates.find(gate => gate.population === populationId);
+function gateForPopulation(populationId, sample = selectedSample()) {
+  const gate = state.gates.find(item => item.population === populationId);
+  return gate ? effectiveGateForSample(gate, sample) : undefined;
+}
+
+function effectiveGateForSample(gate, sample = selectedSample()) {
+  const override = sample?.gateOverrides?.[gate.id];
+  return override ? { ...gate, ...override, tailored: true } : gate;
 }
 
 function eventScreenPoint(event, plotConfig) {
@@ -624,36 +659,35 @@ function pointInPolygon(point, vertices = []) {
   return inside;
 }
 
-function sampleEventsForPopulation(populationId, memo = new Map()) {
+function sampleEventsForPopulation(populationId, memo = new Map(), sample = selectedSample()) {
   if (memo.has(populationId)) return memo.get(populationId);
   const pop = population(populationId);
   if (!pop) return [];
-  const parentEvents = pop.parent ? sampleEventsForPopulation(pop.parent, memo) : activeEvents();
-  const gate = gateForPopulation(populationId);
+  const parentEvents = pop.parent ? sampleEventsForPopulation(pop.parent, memo, sample) : activeEvents(sample);
+  const gate = gateForPopulation(populationId, sample);
   const events = gate ? parentEvents.filter(event => eventPassesGate(event, gate)) : parentEvents;
   memo.set(populationId, events);
   return events;
 }
 
-function recomputePopulationCounts() {
-  const sample = selectedSample();
+function recomputePopulationCounts(sample = selectedSample()) {
   if (!sample) return;
-  const scale = activeEventScale();
+  const scale = activeEventScale(sample);
   const memo = new Map();
   state.populations.forEach(pop => {
-    const events = sampleEventsForPopulation(pop.id, memo);
+    const events = sampleEventsForPopulation(pop.id, memo, sample);
     sample.populationCounts = sample.populationCounts || {};
     sample.populationCounts[pop.id] = Math.round(events.length * scale);
   });
-  refreshGateLabels();
+  refreshGateLabels(sample);
 }
 
-function refreshGateLabels() {
+function refreshGateLabels(sample = selectedSample()) {
   state.gates.forEach(gate => {
     const pop = population(gate.population);
     const parent = pop?.parent ? population(pop.parent) : population("all");
     if (!pop || !parent) return;
-    gate.label = `${pop.name} ${pct(populationCount(pop), populationCount(parent))}`;
+    gate.label = `${pop.name} ${pct(populationCount(pop, sample), populationCount(parent, sample))}`;
   });
 }
 
@@ -688,15 +722,15 @@ function robustCV(values) {
   return med ? ((q3 - q1) / 1.349 / Math.abs(med)) * 100 : NaN;
 }
 
-function statisticsForPopulation(populationId, parameterIds = defaultStatisticParameters()) {
+function statisticsForPopulation(populationId, parameterIds = defaultStatisticParameters(), sample = selectedSample()) {
   const pop = population(populationId);
   const parent = pop?.parent ? population(pop.parent) : pop;
-  const events = sampleEventsForPopulation(populationId);
-  const scaledCount = populationCount(populationId);
+  const events = sampleEventsForPopulation(populationId, new Map(), sample);
+  const scaledCount = populationCount(populationId, sample);
   const stats = {
     count: scaledCount,
-    parentPercent: pct(scaledCount, parent ? populationCount(parent) : scaledCount),
-    totalPercent: pct(scaledCount, populationCount("all")),
+    parentPercent: pct(scaledCount, parent ? populationCount(parent, sample) : scaledCount),
+    totalPercent: pct(scaledCount, populationCount("all", sample)),
     parameters: {}
   };
   parameterIds.forEach(parameterId => {
@@ -771,7 +805,7 @@ function renderInspector() {
   document.querySelectorAll("[data-inspector]").forEach(btn => btn.classList.toggle("active", btn.dataset.inspector === state.inspectorTab));
   const host = document.getElementById("inspectorBody");
   if (state.inspectorTab === "history") {
-    host.innerHTML = `<div class="panel-block"><h3>Audit History</h3><div class="pipeline-list">${state.pipeline.map((step, i) => `<div class="pipeline-item"><span>${step}</span><strong>${i < 9 ? "done" : "scaffold"}</strong></div>`).join("")}</div></div>`;
+    host.innerHTML = `<div class="panel-block"><h3>Audit History</h3><div class="pipeline-list">${state.pipeline.map((step, i) => `<div class="pipeline-item"><span>${step}</span><strong>${i <= 10 ? "done" : "scaffold"}</strong></div>`).join("")}</div></div>`;
     return;
   }
   const p = plot(state.selectedPlot);
@@ -849,6 +883,7 @@ function transformControls(axisLabel, scale, values = defaultTransformSettings()
 
 function surfaceHTML(view) {
   if (view === "tables") return tableSurface();
+  if (view === "batch") return batchSurface();
   if (view === "compensation") return compensationSurface();
   if (view === "spectral") return spectralSurface();
   if (view === "highdim") return highDimSurface();
@@ -861,10 +896,41 @@ function surfaceHTML(view) {
 
 function tableSurface() {
   const table = statisticsTableRows();
+  const batch = state.batch.combinedRows;
   return `<div class="surface">
     <div class="surface-card"><h3>Statistics Table Editor</h3><p>Rows and columns are generated from the live population hierarchy and gated event subsets. CSV and clipboard export use this same table model.</p><div class="button-row"><button class="primary" data-action="export-csv">Export CSV</button><button class="secondary" data-action="add-derived">Add CD4/CD8 parameter</button><button class="secondary" data-action="copy-table">Copy table</button></div></div>
     <div class="table-wrap"><table class="data-table"><thead><tr>${table.headers.map(header => `<th>${header}</th>`).join("")}</tr></thead><tbody>${table.rows.map(row => `<tr>${row.map((cell, index) => `<td>${index === 1 ? fmt(cell) : cell}</td>`).join("")}</tr>`).join("")}</tbody></table></div>
+    ${batch.length ? `<div class="surface-card"><h3>Combined Batch Statistics</h3><p>${state.batch.lastRecomputed}</p><div class="button-row"><button class="primary" data-action="export-batch-csv">Export batch CSV</button></div></div><div class="table-wrap"><table class="data-table"><thead><tr>${state.batch.combinedHeaders.map(header => `<th>${header}</th>`).join("")}</tr></thead><tbody>${batch.map(row => `<tr>${row.map(cell => `<td>${cell}</td>`).join("")}</tr>`).join("")}</tbody></table></div>` : ""}
   </div>`;
+}
+
+function batchSurface() {
+  const template = activeTemplate();
+  const samples = batchGroupSamples();
+  const reviewSample = selectedBatchSample();
+  const tailoredCount = samples.filter(sample => sample.tailoredTemplates?.includes(template.id)).length;
+  return `<div class="surface batch-surface">
+    <div class="surface-grid">
+      <div class="surface-card"><h3>Gating Template</h3><p>${template.name} is linked to ${samples.length} ${state.batch.group} samples. Save the active hierarchy, apply it to the group, then tailor any sample without changing the shared template.</p><div class="report-list"><div class="kv-row"><span>Template version</span><strong>v${template.version}</strong></div><div class="kv-row"><span>Source sample</span><strong>${sampleName(template.sourceSample)}</strong></div><div class="kv-row"><span>Populations / gates</span><strong>${template.populations} / ${template.gates}</strong></div><div class="kv-row"><span>Tailored samples</span><strong>${tailoredCount}</strong></div></div><div class="button-row"><button class="primary" data-action="save-template">Save active template</button><button class="secondary" data-action="apply-template-group">Apply to group</button><button class="secondary" data-action="recompute-batch">Recompute statistics</button></div></div>
+      <div class="surface-card"><h3>Review & Adjust</h3><p>Page through linked samples with the same plot and gate layout. Tailoring records a per-sample gate override and badges the sample.</p><div class="review-strip"><button class="secondary" data-action="review-prev">Previous</button><div><strong>${reviewSample.name}</strong><span>${reviewSample.group} · ${sampleTemplateLabel(reviewSample)?.label || "unassigned"}</span></div><button class="secondary" data-action="review-next">Next</button></div><div class="button-row"><button class="primary" data-action="tailor-sample">Tailor selected gate</button><button class="secondary" data-action="clear-tailor">Clear tailoring</button></div></div>
+    </div>
+    <div class="surface-card"><h3>Batch Gate Review</h3><p>Small multiples show the selected plot and effective gates for every sample in the group.</p><div class="batch-grid">${samples.map((sample, index) => batchTileHTML(sample, index)).join("")}</div></div>
+  </div>`;
+}
+
+function sampleName(sampleId) {
+  return state.samples.find(sample => sample.id === sampleId)?.name || sampleId;
+}
+
+function batchTileHTML(sample, index) {
+  const p = plot(state.selectedPlot);
+  const label = sampleTemplateLabel(sample);
+  const active = sample.id === selectedBatchSample().id;
+  return `<button class="batch-tile ${active ? "active" : ""}" data-action="select-batch-sample" data-sample="${sample.id}" style="--tile-accent:${colors[index % colors.length]}">
+    <header><strong>${sample.name}</strong><span class="${label?.className || "sample-badge unassigned"}">${label?.label || "unassigned"}</span></header>
+    <div class="batch-plot"><canvas data-batch-canvas="${sample.id}"></canvas><svg class="gate-layer" viewBox="0 0 100 100" preserveAspectRatio="none">${gateSVG(p.id, sample)}</svg></div>
+    <footer><span>${fmt(populationCount(state.selectedPopulation, sample))} selected</span><span>${sample.metadata.instrument}</span></footer>
+  </button>`;
 }
 
 function compensationSurface() {
@@ -993,6 +1059,36 @@ function drawMiniPlots() {
       ctx.fillStyle = densityColor((p % 31) / 31);
       ctx.globalAlpha = 0.55;
       ctx.fillRect(x, y, 1.6, 1.6);
+    });
+    ctx.globalAlpha = 1;
+  });
+}
+
+function drawBatchCanvases() {
+  document.querySelectorAll("[data-batch-canvas]").forEach(canvas => {
+    const sample = state.samples.find(item => item.id === canvas.dataset.batchCanvas);
+    const p = plot(state.selectedPlot);
+    if (!sample || !p) return;
+    const { ctx, width, height } = setupCanvas(canvas);
+    const pad = { l: 18, r: 10, t: 12, b: 18 };
+    const plotW = width - pad.l - pad.r;
+    const plotH = height - pad.t - pad.b;
+    ctx.clearRect(0, 0, width, height);
+    ctx.strokeStyle = "rgba(180,196,193,.38)";
+    ctx.beginPath();
+    ctx.moveTo(pad.l, pad.t);
+    ctx.lineTo(pad.l, height - pad.b);
+    ctx.lineTo(width - pad.r, height - pad.b);
+    ctx.stroke();
+    const xParam = param(p.x);
+    const yParam = param(p.y);
+    const events = sampleEventsForPopulation(p.population || "all", new Map(), sample).slice(0, 900);
+    events.forEach((event, index) => {
+      const x = pad.l + normalize(event[p.x], xParam, p.scaleX, axisTransformOptions(p, "x")) * plotW;
+      const y = p.y ? pad.t + (1 - normalize(event[p.y], yParam, p.scaleY, axisTransformOptions(p, "y"))) * plotH : pad.t + plotH * (1 - ((index % 80) / 80));
+      ctx.fillStyle = event.color || colors[index % colors.length];
+      ctx.globalAlpha = 0.48;
+      ctx.fillRect(x, y, 1.4, 1.4);
     });
     ctx.globalAlpha = 1;
   });
@@ -1210,6 +1306,113 @@ function addDerivedParameter() {
   render();
 }
 
+function saveActiveTemplate() {
+  const template = activeTemplate();
+  template.sourceSample = state.selectedSample;
+  template.version += 1;
+  template.savedAt = new Date().toISOString().slice(0, 10);
+  template.populations = state.populations.length;
+  template.gates = state.gates.length;
+  addHistory(`Saved ${template.name} template from ${selectedSample().name}`);
+  toast("Gating template saved");
+  render();
+}
+
+function applyTemplateToGroup() {
+  const template = activeTemplate();
+  batchGroupSamples().forEach(sample => {
+    sample.templateId = template.id;
+    sample.templateVersion = template.version;
+    recomputePopulationCounts(sample);
+  });
+  addHistory(`Applied ${template.name} to ${state.batch.group} samples`);
+  toast("Template applied across group");
+  render();
+}
+
+function reviewBatchSample(step) {
+  const samples = batchGroupSamples();
+  if (!samples.length) return;
+  state.batch.reviewIndex = (state.batch.reviewIndex + step + samples.length) % samples.length;
+  state.selectedSample = selectedBatchSample().id;
+  addHistory(`Reviewing ${selectedBatchSample().name} with shared gate layout`);
+  render();
+}
+
+function selectBatchSample(sampleId) {
+  const samples = batchGroupSamples();
+  const index = samples.findIndex(sample => sample.id === sampleId);
+  if (index >= 0) state.batch.reviewIndex = index;
+  state.selectedSample = sampleId;
+  render();
+}
+
+function tailorSelectedSampleGate() {
+  const sample = selectedBatchSample();
+  const template = activeTemplate();
+  const gate = state.gates.find(item => item.population === state.selectedPopulation) || state.gates.find(item => item.plot === state.selectedPlot) || state.gates[0];
+  if (!sample || !gate) return;
+  sample.gateOverrides = sample.gateOverrides || {};
+  sample.gateOverrides[gate.id] = shiftedGate(gate, 0.018, -0.012);
+  sample.tailoredTemplates = Array.from(new Set([...(sample.tailoredTemplates || []), template.id]));
+  recomputePopulationCounts(sample);
+  addHistory(`Tailored ${gate.label} on ${sample.name} without changing ${template.name}`);
+  toast("Sample-specific gate override saved");
+  render();
+}
+
+function clearSampleTailoring() {
+  const sample = selectedBatchSample();
+  const template = activeTemplate();
+  if (!sample) return;
+  sample.gateOverrides = {};
+  sample.tailoredTemplates = (sample.tailoredTemplates || []).filter(id => id !== template.id);
+  recomputePopulationCounts(sample);
+  addHistory(`Cleared sample-specific tailoring for ${sample.name}`);
+  toast("Tailoring cleared for this sample");
+  render();
+}
+
+function shiftedGate(gate, dx, dy) {
+  const clamp = value => Math.max(0.02, Math.min(0.98, value));
+  if (gate.type === "rectangle") return { x1: clamp(gate.x1 + dx), y1: clamp(gate.y1 + dy), x2: clamp(gate.x2 + dx), y2: clamp(gate.y2 + dy) };
+  if (gate.type === "ellipse") return { cx: clamp(gate.cx + dx), cy: clamp(gate.cy + dy), rx: gate.rx, ry: gate.ry };
+  if (gate.type === "polygon" || gate.type === "lasso") return { points: gate.points.map(point => [clamp(point[0] + dx), clamp(point[1] + dy)]) };
+  if (gate.type === "quadrant") return { x: clamp(gate.x + dx), y: clamp(gate.y + dy) };
+  if (gate.type === "interval") return { x1: clamp(gate.x1 + dx), x2: clamp(gate.x2 + dx) };
+  return {};
+}
+
+function recomputeBatchStatistics() {
+  const marker = defaultStatisticParameters().find(id => /cd3/i.test(id)) || defaultStatisticParameters()[0];
+  const secondary = defaultStatisticParameters().find(id => /cd4/i.test(id)) || defaultStatisticParameters()[1] || marker;
+  const headers = ["Sample", "Group", "Template", "Tailored", "Population", "Events", "% Parent", `Median ${statParamLabel(marker)}`, `Mean ${statParamLabel(secondary)}`];
+  const rows = [];
+  batchGroupSamples().forEach(sample => {
+    recomputePopulationCounts(sample);
+    state.populations.slice(1).forEach(pop => {
+      const stats = statisticsForPopulation(pop.id, [marker, secondary], sample);
+      rows.push([
+        sample.name,
+        sample.group,
+        activeTemplate().name,
+        sample.tailoredTemplates?.includes(activeTemplate().id) ? "yes" : "no",
+        pop.name,
+        fmt(populationCount(pop, sample)),
+        stats.parentPercent,
+        statNumber(stats.parameters[marker]?.median),
+        statNumber(stats.parameters[secondary]?.mean, 1)
+      ]);
+    });
+  });
+  state.batch.combinedHeaders = headers;
+  state.batch.combinedRows = rows;
+  state.batch.lastRecomputed = `${rows.length} rows recomputed for ${state.batch.group}`;
+  addHistory(`Recomputed combined batch statistics for ${state.batch.group}`);
+  toast("Combined batch statistics ready");
+  render();
+}
+
 function runSpectralUnmixing() {
   ensureSpectralParameters();
   state.spectral.enabled = true;
@@ -1345,8 +1548,10 @@ function bindEvents() {
     render();
   });
   document.body.addEventListener("click", event => {
-    const action = event.target.dataset.action;
-    const panel = event.target.dataset.panel;
+    const actionTarget = event.target.closest("[data-action]");
+    const panelTarget = event.target.closest("[data-panel]");
+    const action = actionTarget?.dataset.action;
+    const panel = panelTarget?.dataset.panel;
     if (panel) {
       state.activeView = panel;
       renderView();
@@ -1402,6 +1607,15 @@ function bindEvents() {
     }
     if (action === "run-unmix") runSpectralUnmixing();
     if (action === "build-signatures") buildReferenceSignatures();
+    if (action === "save-template") saveActiveTemplate();
+    if (action === "apply-template-group") applyTemplateToGroup();
+    if (action === "review-prev") reviewBatchSample(-1);
+    if (action === "review-next") reviewBatchSample(1);
+    if (action === "select-batch-sample") selectBatchSample(actionTarget.closest("[data-sample]")?.dataset.sample);
+    if (action === "tailor-sample") tailorSelectedSampleGate();
+    if (action === "clear-tailor") clearSampleTailoring();
+    if (action === "recompute-batch") recomputeBatchStatistics();
+    if (action === "export-batch-csv") exportBatchCSV();
     if (action === "add-derived") addDerivedParameter();
     if (action === "copy-table") copyStatisticsTable();
   });
@@ -1452,6 +1666,18 @@ function exportCSV() {
   a.click();
   URL.revokeObjectURL(a.href);
   toast("CSV export created");
+}
+
+function exportBatchCSV() {
+  if (!state.batch.combinedRows.length) recomputeBatchStatistics();
+  const rows = [state.batch.combinedHeaders, ...state.batch.combinedRows];
+  const blob = new Blob([rows.map(r => r.map(csvEscape).join(",")).join("\n")], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "cytostudio-batch-statistics.csv";
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast("Batch CSV export created");
 }
 
 function copyStatisticsTable() {

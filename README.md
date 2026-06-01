@@ -26,6 +26,7 @@ Then visit `http://localhost:5178`.
 - Live population statistics include count, % parent, % total, median, mean, geometric mean, robust CV, percentiles, CSV export, clipboard copy, and a CD4/CD8 derived-parameter workflow.
 - Compensation matrix edits apply to the active event stream, redraw plots/statistics, parse embedded spillover keywords when present, and drive the N-by-N spillover QC grid.
 - Spectral reference signatures, autofluorescence modeling, quality warnings, and reviewable unmixing create named fluorophore parameters for plots and statistics.
+- Gating templates can be saved from the active hierarchy, applied across a sample group, reviewed as small multiples, tailored per sample, and recomputed into a combined batch statistics table.
 
 ## Architecture choice
 
@@ -49,6 +50,7 @@ These areas are represented in the UI and state model but should not be treated 
 - Full drag-and-drop table-builder UX, samples-as-rows pivoting, and native Excel export.
 - Validated compensation fitting from single-stain controls and per-group/per-sample matrix assignment workflows.
 - Validated NNLS spectral unmixing on real raw spectra and vendor-specific spectral imports.
+- Durable reusable template files, robust per-sample gate editing, group assignment UX, and large-study batch recomputation.
 - UMAP/t-SNE/FlowSOM numerical algorithms and reproducibility tests.
 - GatingML / FlowJo / Cytobank round-trip interoperability.
 - 21 CFR Part 11 or clinical compliance.
