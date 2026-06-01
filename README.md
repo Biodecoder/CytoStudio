@@ -23,6 +23,7 @@ Then visit `http://localhost:5178`.
 - Shared axis transform module for linear, log, logicle-like, and arcsinh transforms, with inspector controls for log floor, logicle width, and arcsinh cofactor.
 - Histograms now bin active event data through the selected axis transform instead of drawing fixed placeholder curves.
 - Statistics table, CSV export, compensation matrix, spillover QC grid, spectral unmixing scaffold, high-dimensional cluster explorer scaffold, figure layout, reproducible pipeline view, workspace sharing surface, onboarding-ready empty/import states, and gated clinical-mode concept.
+- Live population statistics include count, % parent, % total, median, mean, geometric mean, robust CV, percentiles, CSV export, clipboard copy, and a CD4/CD8 derived-parameter workflow.
 
 ## Architecture choice
 
@@ -43,6 +44,7 @@ These areas are represented in the UI and state model but should not be treated 
 - Complete FCS edge-case coverage, memory mapping, and raw spectral vendor formats.
 - Reference-validated biexponential/logicle parity with `flowCore` and canonical tick semantics.
 - Million-event GPU/datashader rendering guarantees and optimized incremental gate recomputation.
+- Full drag-and-drop table-builder UX, samples-as-rows pivoting, and native Excel export.
 - Automated compensation from single-stain controls.
 - NNLS spectral unmixing on real raw spectra.
 - UMAP/t-SNE/FlowSOM numerical algorithms and reproducibility tests.

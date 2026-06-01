@@ -549,6 +549,116 @@ function refreshGateLabels() {
   });
 }
 
+function valuesForParameter(events, parameterId) {
+  return events.map(event => event[parameterId]).filter(Number.isFinite).sort((a, b) => a - b);
+}
+
+function percentile(sortedValues, q) {
+  if (!sortedValues.length) return NaN;
+  const index = (sortedValues.length - 1) * q;
+  const low = Math.floor(index);
+  const high = Math.ceil(index);
+  if (low === high) return sortedValues[low];
+  return sortedValues[low] + (sortedValues[high] - sortedValues[low]) * (index - low);
+}
+
+function mean(values) {
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : NaN;
+}
+
+function geometricMean(values) {
+  const positive = values.filter(value => value > 0);
+  if (!positive.length) return NaN;
+  return Math.exp(positive.reduce((sum, value) => sum + Math.log(value), 0) / positive.length);
+}
+
+function robustCV(values) {
+  if (values.length < 2) return NaN;
+  const med = percentile(values, 0.5);
+  const q1 = percentile(values, 0.25);
+  const q3 = percentile(values, 0.75);
+  return med ? ((q3 - q1) / 1.349 / Math.abs(med)) * 100 : NaN;
+}
+
+function statisticsForPopulation(populationId, parameterIds = defaultStatisticParameters()) {
+  const pop = population(populationId);
+  const parent = pop?.parent ? population(pop.parent) : pop;
+  const events = sampleEventsForPopulation(populationId);
+  const scaledCount = populationCount(populationId);
+  const stats = {
+    count: scaledCount,
+    parentPercent: pct(scaledCount, parent ? populationCount(parent) : scaledCount),
+    totalPercent: pct(scaledCount, populationCount("all")),
+    parameters: {}
+  };
+  parameterIds.forEach(parameterId => {
+    const values = valuesForParameter(events, parameterId);
+    stats.parameters[parameterId] = {
+      median: percentile(values, 0.5),
+      mean: mean(values),
+      geometricMean: geometricMean(values),
+      robustCV: robustCV(values),
+      p10: percentile(values, 0.1),
+      p90: percentile(values, 0.9)
+    };
+  });
+  return stats;
+}
+
+function defaultStatisticParameters() {
+  return ["fsc", "ssc", "cd3", "cd4", "cd8"].filter(id => param(id));
+}
+
+function statNumber(value, digits = 0) {
+  if (!Number.isFinite(value)) return "n/a";
+  return Number(value).toLocaleString("en-US", { maximumFractionDigits: digits });
+}
+
+function statPercentValue(value, digits = 1) {
+  if (!Number.isFinite(value)) return "n/a";
+  return `${statNumber(value, digits)}%`;
+}
+
+function statParamLabel(parameterId) {
+  return param(parameterId)?.label || parameterId;
+}
+
+function statisticsTableRows() {
+  const marker = defaultStatisticParameters().find(id => /cd3/i.test(id)) || defaultStatisticParameters()[0];
+  const secondary = defaultStatisticParameters().find(id => /cd4/i.test(id)) || defaultStatisticParameters()[1] || marker;
+  const derived = parameters.find(parameter => parameter.id === "cd4_cd8_ratio") ? "cd4_cd8_ratio" : null;
+  const headers = [
+    "Population",
+    "Events",
+    "% Parent",
+    "% Total",
+    `Median ${statParamLabel(marker)}`,
+    `Mean ${statParamLabel(secondary)}`,
+    `Robust CV ${statParamLabel(marker)}`
+  ];
+  if (derived) headers.push("Median CD4/CD8");
+  const rows = state.populations.slice(1).map(pop => {
+    const stats = statisticsForPopulation(pop.id, [marker, secondary, derived].filter(Boolean));
+    const row = [
+      pop.name,
+      populationCount(pop),
+      stats.parentPercent,
+      stats.totalPercent,
+      statNumber(stats.parameters[marker]?.median),
+      statNumber(stats.parameters[secondary]?.mean, 1),
+      statPercentValue(stats.parameters[marker]?.robustCV)
+    ];
+    if (derived) row.push(statNumber(stats.parameters[derived]?.median, 2));
+    return row;
+  });
+  return { headers, rows };
+}
+
+function csvEscape(value) {
+  const text = String(value ?? "");
+  return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
 function renderInspector() {
   document.querySelectorAll("[data-inspector]").forEach(btn => btn.classList.toggle("active", btn.dataset.inspector === state.inspectorTab));
   const host = document.getElementById("inspectorBody");
@@ -563,6 +673,9 @@ function renderInspector() {
   const popEvents = populationCount(pop);
   const parentEvents = populationCount(parent);
   const totalEvents = populationCount("all");
+  const stats = statisticsForPopulation(pop.id, defaultStatisticParameters());
+  const firstParam = defaultStatisticParameters()[0];
+  const signalParam = defaultStatisticParameters().find(id => /cd3|cd4|cd8/i.test(id)) || firstParam;
   host.innerHTML = `
     <div class="panel-block"><h3>Plot</h3>
       <label class="field"><span>Name</span><input value="${p.title}" data-edit-plot="title"></label>
@@ -581,9 +694,11 @@ function renderInspector() {
         <div class="stat-row"><span>Events</span><strong>${fmt(popEvents)}</strong></div>
         <div class="stat-row"><span>% Parent</span><strong>${pct(popEvents, parentEvents)}</strong></div>
         <div class="stat-row"><span>% Total</span><strong>${pct(popEvents, totalEvents)}</strong></div>
-        <div class="stat-row"><span>Median FSC-A</span><strong>98,652</strong></div>
-        <div class="stat-row"><span>Median CD3 APC</span><strong>1,243</strong></div>
-        <div class="stat-row"><span>Robust CV CD3</span><strong>68.7%</strong></div>
+        <div class="stat-row"><span>Median ${statParamLabel(firstParam)}</span><strong>${statNumber(stats.parameters[firstParam]?.median)}</strong></div>
+        <div class="stat-row"><span>Mean ${statParamLabel(signalParam)}</span><strong>${statNumber(stats.parameters[signalParam]?.mean, 1)}</strong></div>
+        <div class="stat-row"><span>Geomean ${statParamLabel(signalParam)}</span><strong>${statNumber(stats.parameters[signalParam]?.geometricMean, 1)}</strong></div>
+        <div class="stat-row"><span>Robust CV ${statParamLabel(signalParam)}</span><strong>${statPercentValue(stats.parameters[signalParam]?.robustCV)}</strong></div>
+        <div class="stat-row"><span>P10 / P90 ${statParamLabel(signalParam)}</span><strong>${statNumber(stats.parameters[signalParam]?.p10)} / ${statNumber(stats.parameters[signalParam]?.p90)}</strong></div>
       </div>
     </div>
     <div class="panel-block"><h3>Sample Metadata</h3>
@@ -637,14 +752,10 @@ function surfaceHTML(view) {
 }
 
 function tableSurface() {
+  const table = statisticsTableRows();
   return `<div class="surface">
-    <div class="surface-card"><h3>Statistics Table Editor</h3><p>Drag populations into rows and statistics into columns. This prototype keeps the table live-linked to the selected hierarchy and exports CSV locally.</p><div class="button-row"><button class="primary" data-action="export-csv">Export CSV</button><button class="secondary" data-action="add-derived">Add derived parameter</button><button class="secondary" data-action="copy-table">Copy table</button></div></div>
-    <div class="table-wrap"><table class="data-table"><thead><tr><th>Population</th><th>Events</th><th>% Parent</th><th>% Total</th><th>Median CD3 APC</th><th>Mean CD4 BV421</th><th>Ratio CD4/CD8</th></tr></thead><tbody>${state.populations.slice(1).map(pop => {
-      const count = populationCount(pop);
-      const parentCount = populationCount(pop.parent || pop.id);
-      const totalCount = populationCount("all");
-      return `<tr><td>${pop.name}</td><td>${fmt(count)}</td><td>${pct(count, parentCount)}</td><td>${pct(count, totalCount)}</td><td>${fmt(700 + count % 1900)}</td><td>${fmt(420 + count % 2200)}</td><td>${(1 + (count % 90) / 100).toFixed(2)}</td></tr>`;
-    }).join("")}</tbody></table></div>
+    <div class="surface-card"><h3>Statistics Table Editor</h3><p>Rows and columns are generated from the live population hierarchy and gated event subsets. CSV and clipboard export use this same table model.</p><div class="button-row"><button class="primary" data-action="export-csv">Export CSV</button><button class="secondary" data-action="add-derived">Add CD4/CD8 parameter</button><button class="secondary" data-action="copy-table">Copy table</button></div></div>
+    <div class="table-wrap"><table class="data-table"><thead><tr>${table.headers.map(header => `<th>${header}</th>`).join("")}</tr></thead><tbody>${table.rows.map(row => `<tr>${row.map((cell, index) => `<td>${index === 1 ? fmt(cell) : cell}</td>`).join("")}</tr>`).join("")}</tbody></table></div>
   </div>`;
 }
 
@@ -899,6 +1010,24 @@ function makePopulationCounts(total) {
   };
 }
 
+function addDerivedParameter() {
+  if (parameters.some(parameter => parameter.id === "cd4_cd8_ratio")) {
+    toast("CD4/CD8 derived parameter already exists");
+    return;
+  }
+  const derive = event => {
+    const numerator = event.cd4;
+    const denominator = event.cd8;
+    event.cd4_cd8_ratio = Number.isFinite(numerator) && Number.isFinite(denominator) && Math.abs(denominator) > 1e-9 ? numerator / denominator : NaN;
+  };
+  syntheticEvents.forEach(derive);
+  state.samples.forEach(sample => sample.parsedEvents?.forEach(derive));
+  parameters.push({ id: "cd4_cd8_ratio", label: "CD4/CD8 Ratio", range: [0, 20], scale: "linear", derived: true, formula: "CD4 / CD8" });
+  addHistory("Added derived parameter CD4/CD8 Ratio");
+  toast("Derived parameter added to plots and statistics");
+  render();
+}
+
 function adoptImportedParameters(sample) {
   sample.parameters.forEach(parameter => {
     if (!parameters.some(existing => existing.id === parameter.id)) parameters.push(parameter);
@@ -1035,6 +1164,8 @@ function bindEvents() {
       toast("UMAP scaffold complete; clusters backgated");
       render();
     }
+    if (action === "add-derived") addDerivedParameter();
+    if (action === "copy-table") copyStatisticsTable();
   });
   document.addEventListener("keydown", event => {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -1074,14 +1205,25 @@ function bindEvents() {
 }
 
 function exportCSV() {
-  const rows = [["Population","Events","PercentTotal"], ...state.populations.map(p => [p.name, populationCount(p), pct(populationCount(p), populationCount("all"))])];
-  const blob = new Blob([rows.map(r => r.join(",")).join("\n")], { type: "text/csv" });
+  const table = statisticsTableRows();
+  const rows = [table.headers, ...table.rows];
+  const blob = new Blob([rows.map(r => r.map(csvEscape).join(",")).join("\n")], { type: "text/csv" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = "cytostudio-statistics.csv";
   a.click();
   URL.revokeObjectURL(a.href);
   toast("CSV export created");
+}
+
+function copyStatisticsTable() {
+  const table = statisticsTableRows();
+  const rows = [table.headers, ...table.rows];
+  const text = rows.map(row => row.join("\t")).join("\n");
+  navigator.clipboard?.writeText(text).then(
+    () => toast("Statistics table copied"),
+    () => toast("Clipboard unavailable; use CSV export")
+  );
 }
 
 syntheticEvents = makeEvents();
