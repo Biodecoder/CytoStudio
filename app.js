@@ -666,6 +666,7 @@ function drawPlot(canvas, p) {
   ctx.lineTo(pad.l, height - pad.b);
   ctx.lineTo(width - pad.r, height - pad.b);
   ctx.stroke();
+  drawAxisTicks(ctx, width, height, pad, p);
   ctx.fillStyle = "rgba(160,178,174,.8)";
   ctx.font = "12px -apple-system, BlinkMacSystemFont, sans-serif";
   ctx.fillText(param(p.x).label, width / 2 - 26, height - 15);
@@ -678,6 +679,55 @@ function drawPlot(canvas, p) {
   }
   if (p.type === "histogram") drawHistogram(ctx, width, height, pad, p);
   else drawScatter(ctx, width, height, pad, p);
+}
+
+function drawAxisTicks(ctx, width, height, pad, p) {
+  const xParam = param(p.x);
+  const yParam = p.y ? param(p.y) : null;
+  const plotW = width - pad.l - pad.r;
+  const plotH = height - pad.t - pad.b;
+  const xTicks = transformTicks(xParam, p.scaleX, axisTransformOptions(p, "x"));
+  const yTicks = yParam ? transformTicks(yParam, p.scaleY, axisTransformOptions(p, "y")) : [];
+  ctx.save();
+  ctx.font = "10px -apple-system, BlinkMacSystemFont, sans-serif";
+  ctx.fillStyle = "rgba(196,210,207,.72)";
+  ctx.strokeStyle = "rgba(180,196,193,.28)";
+  ctx.lineWidth = 1;
+  let lastXLabel = -Infinity;
+  xTicks.forEach(tick => {
+    const x = pad.l + normalize(tick.value, xParam, p.scaleX, axisTransformOptions(p, "x")) * plotW;
+    if (x < pad.l - 1 || x > width - pad.r + 1) return;
+    ctx.beginPath();
+    ctx.moveTo(x, height - pad.b);
+    ctx.lineTo(x, height - pad.b + 5);
+    ctx.stroke();
+    if (x - lastXLabel > 34) {
+      ctx.textAlign = "center";
+      ctx.fillText(tick.label, x, height - pad.b + 18);
+      lastXLabel = x;
+    }
+  });
+  let lastYLabel = Infinity;
+  yTicks.forEach(tick => {
+    const y = pad.t + (1 - normalize(tick.value, yParam, p.scaleY, axisTransformOptions(p, "y"))) * plotH;
+    if (y < pad.t - 1 || y > height - pad.b + 1) return;
+    ctx.beginPath();
+    ctx.moveTo(pad.l - 5, y);
+    ctx.lineTo(pad.l, y);
+    ctx.stroke();
+    if (lastYLabel - y > 18) {
+      ctx.textAlign = "right";
+      ctx.fillText(tick.label, pad.l - 8, y + 3);
+      lastYLabel = y;
+    }
+  });
+  ctx.restore();
+}
+
+function transformTicks(parameter, scale, options = {}) {
+  return fcsCore?.transforms?.ticks
+    ? fcsCore.transforms.ticks(parameter.range, scale, options, 5)
+    : [{ value: parameter.range[0], label: String(parameter.range[0]) }, { value: parameter.range[1], label: String(parameter.range[1]) }];
 }
 
 function drawScatter(ctx, width, height, pad, p) {

@@ -242,5 +242,9 @@ assert.ok(transforms.normalize(50, [0, 100], "linear") === 0.5);
 assert.ok(transforms.normalize(-25, [-100, 1000], "logicle", { width: 25 }) > 0);
 assert.ok(transforms.normalize(-25, [-100, 1000], "biexponential", { width: 25 }) > 0);
 assert.ok(transforms.normalize(-25, [-100, 1000], "biexponential", { width: 25 }) < transforms.normalize(1000, [-100, 1000], "biexponential", { width: 25 }));
+assert.deepEqual(transforms.ticks([1, 100000], "log", { floor: 1 }).map(tick => tick.value), [1, 10, 100, 1000, 10000, 100000]);
+assert.ok(transforms.ticks([-100, 100000], "biexponential", { width: 25 }).some(tick => tick.value === 0));
+assert.ok(transforms.ticks([-100, 100000], "biexponential", { width: 25 }).some(tick => tick.value < 0));
+assert.ok(transforms.ticks([-100, 100000], "arcsinh", { cofactor: 150 }).some(tick => tick.value === 0));
 
 console.log("fcs-core tests passed");

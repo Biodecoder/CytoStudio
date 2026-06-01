@@ -248,6 +248,61 @@
     };
   }
 
+  function formatTick(value) {
+    const abs = Math.abs(value);
+    if (value === 0) return "0";
+    if (abs >= 1000) return value.toExponential(0).replace("+", "");
+    if (abs >= 10) return String(Math.round(value));
+    return Number(value.toFixed(2)).toString();
+  }
+
+  function linearTicks(range, count = 5) {
+    const min = Number(range?.[0]) || 0;
+    const max = Number(range?.[1]) || 1;
+    const span = Math.max(1e-9, max - min);
+    const rawStep = span / Math.max(1, count - 1);
+    const power = Math.pow(10, Math.floor(Math.log10(rawStep)));
+    const factor = rawStep / power;
+    const niceFactor = factor <= 1 ? 1 : (factor <= 2 ? 2 : (factor <= 5 ? 5 : 10));
+    const step = niceFactor * power;
+    const start = Math.ceil(min / step) * step;
+    const ticks = [];
+    for (let value = start; value <= max + step * 0.5 && ticks.length < count + 2; value += step) {
+      ticks.push({ value, label: formatTick(value) });
+    }
+    return ticks.length ? ticks : [{ value: min, label: formatTick(min) }, { value: max, label: formatTick(max) }];
+  }
+
+  function logTicks(range, options = {}) {
+    const floor = Math.max(options.floor ?? 1, 0.0001);
+    const min = Math.max(range?.[0] ?? floor, floor);
+    const max = Math.max(range?.[1] ?? 1000, floor * 10);
+    const start = Math.ceil(Math.log10(min));
+    const end = Math.floor(Math.log10(max));
+    const ticks = [];
+    for (let power = start; power <= end; power++) {
+      const value = Math.pow(10, power);
+      ticks.push({ value, label: formatTick(value) });
+    }
+    return ticks.length ? ticks : linearTicks([floor, max], 4);
+  }
+
+  function symmetricTicks(range, options = {}) {
+    const width = Math.max(options.width ?? 18, 1);
+    const min = Number(range?.[0]) || 0;
+    const max = Number(range?.[1]) || 1;
+    const limit = Math.max(Math.abs(min), Math.abs(max), width * 10);
+    const maxPower = Math.max(1, Math.floor(Math.log10(limit)));
+    const values = [0];
+    for (let power = 1; power <= maxPower; power++) {
+      const value = Math.pow(10, power);
+      if (-value >= min) values.unshift(-value);
+      if (value <= max) values.push(value);
+    }
+    if (!values.some(value => value < 0) && min < 0) values.unshift(Math.round(min));
+    return values.map(value => ({ value, label: formatTick(value) }));
+  }
+
   const transforms = {
     linear(value) {
       return value;
@@ -274,6 +329,11 @@
       const transformed = fn(value, options);
       if (max === min) return 0;
       return Math.max(0, Math.min(1, (transformed - min) / (max - min)));
+    },
+    ticks(range, scale = "linear", options = {}, count = 5) {
+      if (scale === "log") return logTicks(range, options);
+      if (scale === "logicle" || scale === "biexponential" || scale === "arcsinh") return symmetricTicks(range, options);
+      return linearTicks(range, count);
     }
   };
 
