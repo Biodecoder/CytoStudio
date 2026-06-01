@@ -10,6 +10,7 @@ const parameters = [
 ];
 
 const colors = ["#31e6d0", "#78d95c", "#a88be8", "#cf67cd", "#ff9b45", "#44b7d0", "#ffd45a", "#e45668"];
+const fcsCore = window.CytoFCS;
 
 const state = {
   theme: localStorage.getItem("cyto.theme") || "dark",
@@ -50,8 +51,8 @@ const state = {
   pipeline: [
     "00 Project skeleton and design tokens",
     "01 Three-pane shell, Command-K, persisted layout",
-    "02 FCS import manager scaffold and metadata model",
-    "03 Linear, log, arcsinh, logicle-like transforms",
+    "02 FCS import adapter, metadata model, local parser tests",
+    "03 Shared linear, log, arcsinh, logicle-like transforms",
     "04 Canvas plot engine with density, contour, histogram, UMAP",
     "05 Manual gate tools and edit affordances",
     "06 Hierarchy, live-linking, backgating",
@@ -125,24 +126,36 @@ function population(id) {
   return state.populations.find(p => p.id === id);
 }
 
+function selectedSample() {
+  return state.samples.find(s => s.id === state.selectedSample);
+}
+
+function populationCount(popOrId) {
+  const pop = typeof popOrId === "string" ? population(popOrId) : popOrId;
+  const sample = selectedSample();
+  return sample?.populationCounts?.[pop.id] ?? pop.count;
+}
+
 function plot(id) {
   return state.plots.find(p => p.id === id);
 }
 
+function activeEvents() {
+  const sample = selectedSample();
+  return sample?.parsedEvents?.length ? sample.parsedEvents : syntheticEvents;
+}
+
 function transformValue(value, scale) {
-  if (scale === "linear") return value;
-  if (scale === "log") return Math.log10(Math.max(value, 1));
-  if (scale === "arcsinh") return Math.asinh(value / 150);
-  if (scale === "logicle") return Math.sign(value) * Math.log10(1 + Math.abs(value) / 18);
+  const transforms = fcsCore?.transforms;
+  if (transforms?.[scale]) return transforms[scale](value);
   return value;
 }
 
 function normalize(value, parameter, scale) {
+  if (!Number.isFinite(value)) return 0;
+  if (fcsCore?.transforms?.normalize) return fcsCore.transforms.normalize(value, parameter.range, scale);
   const [min, max] = parameter.range;
-  const tMin = transformValue(min, scale);
-  const tMax = transformValue(max, scale);
-  const t = transformValue(value, scale);
-  return Math.max(0, Math.min(1, (t - tMin) / (tMax - tMin)));
+  return Math.max(0, Math.min(1, (value - min) / (max - min)));
 }
 
 function toast(message) {
@@ -174,7 +187,8 @@ function renderSamples() {
   state.samples.filter(s => s.name.toLowerCase().includes(q)).forEach((sample, idx) => {
     const row = document.createElement("button");
     row.className = `row ${sample.id === state.selectedSample ? "active" : ""}`;
-    row.innerHTML = `<span class="dot" style="background:${colors[idx % colors.length]}"></span><span>${sample.name}<br><small>${sample.group} · ${sample.metadata.instrument}</small></span><span class="count">${fmt(sample.events)}</span>`;
+    const parsedBadge = sample.parsed ? " · parsed FCS" : "";
+    row.innerHTML = `<span class="dot" style="background:${colors[idx % colors.length]}"></span><span>${sample.name}<br><small>${sample.group} · ${sample.metadata.instrument}${parsedBadge}</small></span><span class="count">${fmt(sample.events)}</span>`;
     row.addEventListener("click", () => {
       state.selectedSample = sample.id;
       addHistory(`Selected sample ${sample.name}`);
@@ -192,7 +206,8 @@ function renderTree() {
     const row = document.createElement("button");
     row.className = `row depth-${Math.min(depth, 4)} ${pop.id === state.selectedPopulation ? "active" : ""}`;
     row.draggable = true;
-    row.innerHTML = `<span>${children(pop.id).length ? "▾" : ""}</span><span class="dot" style="background:${pop.color}"></span><span>${pop.name}</span><span class="count">${pop.count > 999999 ? (pop.count / 1000000).toFixed(2) + "M" : fmt(pop.count)}</span>`;
+    const count = populationCount(pop);
+    row.innerHTML = `<span>${children(pop.id).length ? "▾" : ""}</span><span class="dot" style="background:${pop.color}"></span><span>${pop.name}</span><span class="count">${count > 999999 ? (count / 1000000).toFixed(2) + "M" : fmt(count)}</span>`;
     row.addEventListener("click", () => {
       state.selectedPopulation = pop.id;
       state.selectedPlot = state.plots.find(p => p.population === pop.id)?.id || state.selectedPlot;
@@ -216,11 +231,11 @@ function renderTree() {
 }
 
 function renderStatus() {
-  const sample = state.samples.find(s => s.id === state.selectedSample);
+  const sample = selectedSample();
   const pop = population(state.selectedPopulation);
   document.getElementById("statusEvents").textContent = `Events: ${fmt(sample.events)}`;
   document.getElementById("statusSample").textContent = `Sample: ${sample.name}`;
-  document.getElementById("statusPopulation").textContent = `Selected: ${pop.name} (${fmt(pop.count)} events)`;
+  document.getElementById("statusPopulation").textContent = `Selected: ${pop.name} (${fmt(populationCount(pop))} events)`;
   document.getElementById("statusPipeline").textContent = `Pipeline: ${state.pipeline.length} steps`;
 }
 
@@ -336,7 +351,7 @@ function drawScatter(ctx, width, height, pad, p) {
   const yParam = param(p.y);
   const plotW = width - pad.l - pad.r;
   const plotH = height - pad.t - pad.b;
-  const events = syntheticEvents;
+  const events = activeEvents();
   if (p.type === "density") {
     const bins = new Map();
     events.forEach(ev => {
@@ -359,7 +374,7 @@ function drawScatter(ctx, width, height, pad, p) {
     if (i % (p.type === "density" ? 4 : 1)) return;
     const x = pad.l + normalize(ev[p.x], xParam, p.scaleX) * plotW;
     const y = pad.t + (1 - normalize(ev[p.y], yParam, p.scaleY)) * plotH;
-    ctx.fillStyle = p.type === "umap" ? ev.color : (p.type === "density" ? "rgba(122,200,255,.28)" : ev.color);
+    ctx.fillStyle = p.type === "umap" ? (ev.color || colors[i % colors.length]) : (p.type === "density" ? "rgba(122,200,255,.28)" : (ev.color || colors[i % colors.length]));
     ctx.globalAlpha = p.type === "umap" ? 0.72 : 0.44;
     ctx.fillRect(x, y, 1.25, 1.25);
   });
@@ -414,6 +429,10 @@ function renderInspector() {
   const p = plot(state.selectedPlot);
   const pop = population(state.selectedPopulation);
   const parent = population(pop.parent) || pop;
+  const sample = selectedSample();
+  const popEvents = populationCount(pop);
+  const parentEvents = populationCount(parent);
+  const totalEvents = populationCount("all");
   host.innerHTML = `
     <div class="panel-block"><h3>Plot</h3>
       <label class="field"><span>Name</span><input value="${p.title}" data-edit-plot="title"></label>
@@ -427,12 +446,22 @@ function renderInspector() {
     <div class="panel-block"><h3>Population Statistics</h3>
       <div class="stats-list">
         <div class="stat-row"><span>Population</span><strong style="color:${pop.color}">${pop.name}</strong></div>
-        <div class="stat-row"><span>Events</span><strong>${fmt(pop.count)}</strong></div>
-        <div class="stat-row"><span>% Parent</span><strong>${pct(pop.count, parent.count)}</strong></div>
-        <div class="stat-row"><span>% Total</span><strong>${pct(pop.count, population("all").count)}</strong></div>
+        <div class="stat-row"><span>Events</span><strong>${fmt(popEvents)}</strong></div>
+        <div class="stat-row"><span>% Parent</span><strong>${pct(popEvents, parentEvents)}</strong></div>
+        <div class="stat-row"><span>% Total</span><strong>${pct(popEvents, totalEvents)}</strong></div>
         <div class="stat-row"><span>Median FSC-A</span><strong>98,652</strong></div>
         <div class="stat-row"><span>Median CD3 APC</span><strong>1,243</strong></div>
         <div class="stat-row"><span>Robust CV CD3</span><strong>68.7%</strong></div>
+      </div>
+    </div>
+    <div class="panel-block"><h3>Sample Metadata</h3>
+      <div class="stats-list">
+        <div class="stat-row"><span>File</span><strong>${sample.name}</strong></div>
+        <div class="stat-row"><span>Instrument</span><strong>${sample.metadata.instrument}</strong></div>
+        <div class="stat-row"><span>Operator</span><strong>${sample.metadata.operator}</strong></div>
+        <div class="stat-row"><span>Acquired</span><strong>${sample.metadata.acquired}</strong></div>
+        <div class="stat-row"><span>Parameters</span><strong>${sample.parameters?.length || parameters.length}</strong></div>
+        <div class="stat-row"><span>Keywords</span><strong>${sample.metadata.keywords}</strong></div>
       </div>
     </div>
     <div class="panel-block"><h3>Quality & Warnings</h3>
@@ -464,7 +493,12 @@ function surfaceHTML(view) {
 function tableSurface() {
   return `<div class="surface">
     <div class="surface-card"><h3>Statistics Table Editor</h3><p>Drag populations into rows and statistics into columns. This prototype keeps the table live-linked to the selected hierarchy and exports CSV locally.</p><div class="button-row"><button class="primary" data-action="export-csv">Export CSV</button><button class="secondary" data-action="add-derived">Add derived parameter</button><button class="secondary" data-action="copy-table">Copy table</button></div></div>
-    <div class="table-wrap"><table class="data-table"><thead><tr><th>Population</th><th>Events</th><th>% Parent</th><th>% Total</th><th>Median CD3 APC</th><th>Mean CD4 BV421</th><th>Ratio CD4/CD8</th></tr></thead><tbody>${state.populations.slice(1).map(pop => `<tr><td>${pop.name}</td><td>${fmt(pop.count)}</td><td>${pct(pop.count, population(pop.parent)?.count || pop.count)}</td><td>${pct(pop.count, population("all").count)}</td><td>${fmt(700 + pop.count % 1900)}</td><td>${fmt(420 + pop.count % 2200)}</td><td>${(1 + (pop.count % 90) / 100).toFixed(2)}</td></tr>`).join("")}</tbody></table></div>
+    <div class="table-wrap"><table class="data-table"><thead><tr><th>Population</th><th>Events</th><th>% Parent</th><th>% Total</th><th>Median CD3 APC</th><th>Mean CD4 BV421</th><th>Ratio CD4/CD8</th></tr></thead><tbody>${state.populations.slice(1).map(pop => {
+      const count = populationCount(pop);
+      const parentCount = populationCount(pop.parent || pop.id);
+      const totalCount = populationCount("all");
+      return `<tr><td>${pop.name}</td><td>${fmt(count)}</td><td>${pct(count, parentCount)}</td><td>${pct(count, totalCount)}</td><td>${fmt(700 + count % 1900)}</td><td>${fmt(420 + count % 2200)}</td><td>${(1 + (count % 90) / 100).toFixed(2)}</td></tr>`;
+    }).join("")}</tbody></table></div>
   </div>`;
 }
 
@@ -581,37 +615,146 @@ function createGate() {
     parent: parent.id,
     name: `${type[0].toUpperCase()}${type.slice(1)} Gate`,
     color: colors[state.populations.length % colors.length],
-    count: Math.floor(parent.count * (0.18 + rand(Date.now()) * 0.28)),
+    count: Math.floor(populationCount(parent) * (0.18 + rand(Date.now()) * 0.28)),
     gate: type
   };
   state.populations.push(newPop);
   state.selectedPopulation = id;
-  if (type === "quadrant") state.gates.push({ id: `g${Date.now()}`, plot: p.id, population: id, type, label: `${newPop.name} ${pct(newPop.count, parent.count)}`, x: 0.52, y: 0.48 });
-  else if (type === "interval") state.gates.push({ id: `g${Date.now()}`, plot: p.id, population: id, type, label: `${newPop.name} ${pct(newPop.count, parent.count)}`, x1: 0.46, x2: 0.72 });
-  else state.gates.push({ id: `g${Date.now()}`, plot: p.id, population: id, type: "polygon", label: `${newPop.name} ${pct(newPop.count, parent.count)}`, points: [[0.28,0.72],[0.34,0.42],[0.58,0.30],[0.74,0.52],[0.66,0.78]] });
+  if (type === "quadrant") state.gates.push({ id: `g${Date.now()}`, plot: p.id, population: id, type, label: `${newPop.name} ${pct(newPop.count, populationCount(parent))}`, x: 0.52, y: 0.48 });
+  else if (type === "interval") state.gates.push({ id: `g${Date.now()}`, plot: p.id, population: id, type, label: `${newPop.name} ${pct(newPop.count, populationCount(parent))}`, x1: 0.46, x2: 0.72 });
+  else state.gates.push({ id: `g${Date.now()}`, plot: p.id, population: id, type: "polygon", label: `${newPop.name} ${pct(newPop.count, populationCount(parent))}`, points: [[0.28,0.72],[0.34,0.42],[0.58,0.30],[0.74,0.52],[0.66,0.78]] });
   addHistory(`Created ${type} gate and live-linked child population`);
   toast("Gate created; hierarchy, plots, and stats updated");
   render();
 }
 
-function simulateImport(files) {
-  const names = [...files].map(f => f.name || "Dropped folder").slice(0, 6);
-  if (!names.length) names.push("Imported Sample.fcs");
+async function importFiles(files) {
+  const fileList = [...files].filter(file => !file.name || file.name.toLowerCase().endsWith(".fcs")).slice(0, 8);
+  if (!fileList.length) {
+    toast("No FCS files found in the drop");
+    return;
+  }
   let progress = 0;
   const timer = setInterval(() => {
     progress += 16;
-    toast(`Importing FCS metadata ${Math.min(progress, 100)}%`);
-    if (progress >= 100) {
-      clearInterval(timer);
-      names.forEach((name, i) => {
-        const id = `s${Date.now()}${i}`;
-        state.samples.push({ id, name, events: 2000000 + Math.floor(rand(Date.now() + i) * 7000000), group: "Imported", status: "ready", metadata: { instrument: "Detected from $CYT", operator: "FCS keyword", acquired: "Embedded date", compensation: "Parsed if present", keywords: 280 + i * 17 } });
-      });
-      addHistory(`Imported ${names.length} FCS file(s) with nonblocking progress`);
-      toast("Import complete");
-      render();
-    }
+    toast(`Importing FCS data ${Math.min(progress, 96)}%`);
   }, 120);
+
+  const imported = [];
+  for (const file of fileList) {
+    try {
+      const parsed = fcsCore.parseFCS(await file.arrayBuffer(), { maxEvents: 25000 });
+      imported.push(sampleFromParsedFCS(file.name, parsed));
+    } catch (error) {
+      imported.push(fallbackSample(file.name, error));
+    }
+  }
+
+  clearInterval(timer);
+  imported.forEach(sample => state.samples.push(sample));
+  const firstParsed = imported.find(sample => sample.parsed && sample.parameters?.length);
+  if (firstParsed) {
+    state.selectedSample = firstParsed.id;
+    adoptImportedParameters(firstParsed);
+  }
+  addHistory(`Imported ${imported.length} FCS file(s) through local parser`);
+  toast(firstParsed ? "FCS import complete with parsed events" : "Import finished with metadata fallback");
+  render();
+}
+
+function fallbackSample(name, error) {
+  return {
+    id: `s${Date.now()}${Math.floor(Math.random() * 1000)}`,
+    name,
+    events: 0,
+    group: "Import warnings",
+    status: "warning",
+    parsed: false,
+    parameters: [],
+    metadata: {
+      instrument: "Parse warning",
+      operator: error.message,
+      acquired: "Unknown",
+      compensation: "",
+      keywords: 0
+    }
+  };
+}
+
+function sampleFromParsedFCS(name, parsed) {
+  const sample = {
+    id: `s${Date.now()}${Math.floor(Math.random() * 1000)}`,
+    name,
+    events: parsed.eventCount,
+    group: "Imported FCS",
+    status: "ready",
+    parsed: true,
+    parameters: parsed.parameters.map(parameter => ({
+      id: parameter.id,
+      label: parameter.label,
+      raw: parameter.raw,
+      stain: parameter.stain,
+      range: mergeParameterRange(parsed.events, parameter),
+      scale: /FSC|SSC/i.test(parameter.raw) ? "linear" : (parameter.stain ? "logicle" : "linear")
+    })),
+    parsedEvents: parsed.events,
+    populationCounts: makePopulationCounts(parsed.eventCount),
+    metadata: {
+      instrument: parsed.metadata.instrument,
+      operator: parsed.metadata.operator,
+      acquired: parsed.metadata.acquired,
+      compensation: parsed.metadata.compensation ? "Embedded spillover parsed" : "No embedded matrix",
+      keywords: parsed.metadata.keywordCount
+    }
+  };
+  return sample;
+}
+
+function inferRange(events, id) {
+  let min = Infinity;
+  let max = -Infinity;
+  events.forEach(event => {
+    const value = event[id];
+    if (Number.isFinite(value)) {
+      min = Math.min(min, value);
+      max = Math.max(max, value);
+    }
+  });
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 1];
+  return [Math.min(0, min), Math.max(1, max)];
+}
+
+function mergeParameterRange(events, parameter) {
+  const inferred = inferRange(events, parameter.id);
+  const declaredMax = Number(parameter.range) || inferred[1];
+  return [Math.min(0, inferred[0]), Math.max(declaredMax, inferred[1], 1)];
+}
+
+function makePopulationCounts(total) {
+  const part = ratio => total > 0 ? Math.max(1, Math.floor(total * ratio)) : 0;
+  return {
+    all: total,
+    singlets: part(0.86),
+    live: part(0.69),
+    cd3: part(0.31),
+    cd4: part(0.17),
+    cd8: part(0.12),
+    bcell: part(0.05),
+    nk: part(0.04)
+  };
+}
+
+function adoptImportedParameters(sample) {
+  sample.parameters.forEach(parameter => {
+    if (!parameters.some(existing => existing.id === parameter.id)) parameters.push(parameter);
+  });
+  if (sample.parameters.length >= 2) {
+    state.plots[0].x = sample.parameters[0].id;
+    state.plots[0].y = sample.parameters[1].id;
+    state.plots[0].scaleX = sample.parameters[0].scale;
+    state.plots[0].scaleY = sample.parameters[1].scale;
+    state.plots[0].title = `${sample.parameters[0].raw} vs ${sample.parameters[1].raw}`;
+  }
 }
 
 function commandItems() {
@@ -703,11 +846,11 @@ function bindEvents() {
     if (action === "add-boolean") {
       const parent = population(state.selectedPopulation);
       const id = `bool${Date.now()}`;
-      state.populations.push({ id, parent: parent.parent || "live", name: `${parent.name} AND Live`, color: "#ffd45a", count: Math.floor(parent.count * 0.72), gate: "boolean" });
+      state.populations.push({ id, parent: parent.parent || "live", name: `${parent.name} AND Live`, color: "#ffd45a", count: Math.floor(populationCount(parent) * 0.72), gate: "boolean" });
       addHistory("Created boolean AND gate scaffold");
       render();
     }
-    if (action === "import") simulateImport([{ name: "Dragged PBMC sample.fcs" }]);
+    if (action === "import") document.getElementById("fileInput").click();
     if (action === "export" || action === "export-csv") exportCSV();
     if (action === "reset-scale") {
       const p = plot(state.selectedPlot);
@@ -738,6 +881,7 @@ function bindEvents() {
     if (event.target.id === "commandPalette") closeCommandPalette();
   });
   document.getElementById("sampleSearch").addEventListener("input", renderSamples);
+  document.getElementById("fileInput").addEventListener("change", event => importFiles(event.target.files));
   const dropZone = document.getElementById("dropZone");
   ["dragenter", "dragover"].forEach(type => dropZone.addEventListener(type, event => {
     event.preventDefault();
@@ -747,7 +891,7 @@ function bindEvents() {
     event.preventDefault();
     dropZone.classList.remove("drag");
   }));
-  dropZone.addEventListener("drop", event => simulateImport(event.dataTransfer.files));
+  dropZone.addEventListener("drop", event => importFiles(event.dataTransfer.files));
   window.addEventListener("resize", () => requestAnimationFrame(drawAllPlots));
   document.getElementById("canvasRegion").addEventListener("wheel", event => {
     if (event.ctrlKey || event.metaKey) {
@@ -759,7 +903,7 @@ function bindEvents() {
 }
 
 function exportCSV() {
-  const rows = [["Population","Events","PercentTotal"], ...state.populations.map(p => [p.name, p.count, pct(p.count, population("all").count)])];
+  const rows = [["Population","Events","PercentTotal"], ...state.populations.map(p => [p.name, populationCount(p), pct(populationCount(p), populationCount("all"))])];
   const blob = new Blob([rows.map(r => r.join(",")).join("\n")], { type: "text/csv" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);

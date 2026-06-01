@@ -41,8 +41,9 @@
           </label>
           <div id="dropZone" class="drop-zone" tabindex="0">
             <strong>Drop FCS files or folders</strong>
-            <span>FCS 3.0 / 3.1 import is scaffolded with responsive progress and metadata preview.</span>
+            <span>FCS 3.0 / 3.1 files are parsed locally for metadata, parameters, and common numeric event data.</span>
           </div>
+          <input id="fileInput" type="file" accept=".fcs" multiple hidden>
           <div id="sampleList" class="sample-list" aria-label="Samples"></div>
         </section>
         <div class="resizer" data-resize="left"></div>
@@ -104,6 +105,7 @@
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
   </div>
+  <script src="fcs-core.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

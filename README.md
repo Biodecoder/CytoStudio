@@ -17,15 +17,17 @@ Then visit `http://localhost:5178`.
 - Three-pane macOS-style workspace with toolbar, sample rail, population hierarchy, canvas, inspector, and status bar.
 - Dark/light appearance toggle, Command-K palette, keyboard shortcuts, drag-drop import scaffold, and persisted appearance state.
 - Synthetic cytometry event model with scatter, density, histogram, and UMAP-style plot tiles drawn on canvas.
+- Local FCS 3.0/3.1 parser for standard list-mode numeric files, including header/TEXT parsing, keywords, parameter labels, common integer/float event payloads, and tested fixture coverage.
 - Manual gate tool selection, gate creation, gate hierarchy, boolean-gate scaffold, backgating/live-linking messaging, and live statistics.
-- Axis controls for linear, log, logicle-like, and arcsinh transforms.
+- Shared axis transform module for linear, log, logicle-like, and arcsinh transforms.
 - Statistics table, CSV export, compensation matrix, spillover QC grid, spectral unmixing scaffold, high-dimensional cluster explorer scaffold, figure layout, reproducible pipeline view, workspace sharing surface, onboarding-ready empty/import states, and gated clinical-mode concept.
 
 ## Architecture choice
 
 The blueprint recommends Tauri 2 plus a Rust/Arrow data core and optional Python scientific sidecar. This first pass keeps the app in vanilla HTML/CSS/JavaScript so it can be launched immediately from the folder while preserving a clean separation between:
 
-- `app.js` application state, synthetic event generation, transforms, plot drawing, gate hierarchy, and export behavior.
+- `app.js` application state, synthetic event generation, import wiring, plot drawing, gate hierarchy, and export behavior.
+- `fcs-core.js` FCS parsing and cytometry transform helpers, usable in both browser and Node tests.
 - `styles.css` app design system and responsive macOS-style layout.
 - `index.html` app shell.
 - `blueprint-catalog.html`, `CytoStudio-Blueprint-and-Codex-Prompts.md`, and `prompts/` source product blueprint.
@@ -36,8 +38,8 @@ The next engineering step is to wrap this surface with Tauri and replace the syn
 
 These areas are represented in the UI and state model but should not be treated as validated scientific or regulatory behavior:
 
-- Full FCS 3.0/3.1 parsing, memory mapping, and raw spectral vendor formats.
-- Reference-validated logicle/biexponential parity with `flowCore`.
+- Complete FCS edge-case coverage, memory mapping, and raw spectral vendor formats.
+- Reference-validated biexponential/logicle parity with `flowCore`.
 - Million-event GPU/datashader rendering guarantees.
 - Automated compensation from single-stain controls.
 - NNLS spectral unmixing on real raw spectra.
