@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-CytoStudio-Version",
+          "value": "1.0.0"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+.codex-tools/
+.git/
+tests/
+docs/
+prompts/
+CytoStudio-Blueprint-and-Codex-Prompts.md
+BUILD_AUDIT.md
