@@ -29,6 +29,7 @@ Then visit `http://localhost:5178`.
 - Gating templates can be saved from the active hierarchy, applied across a sample group, reviewed as small multiples, tailored per sample, and recomputed into a combined batch statistics table.
 - High-dimensional analysis can run a sampled reproducible UMAP/t-SNE-style embedding, assign FlowSOM/graph-style clusters, color by marker, inspect a cluster heatmap, compare samples, and backgate a selected cluster into the population tree.
 - Figure layout editor supports live linked plot tiles, labels, arrows, inset plots, snapping/alignment controls, appearance controls, template saving, and browser-native export proofs.
+- Pipeline view supports timeline stepping, replay recording, report proof generation, pipeline JSON, gated FCS proof, event CSV/Parquet proof, statistics Excel-compatible export, and GatingML proof export.
 
 ## Architecture choice
 
@@ -55,7 +56,7 @@ These areas are represented in the UI and state model but should not be treated 
 - Durable reusable template files, robust per-sample gate editing, group assignment UX, and large-study batch recomputation.
 - Validated UMAP/t-SNE/FlowSOM numerical algorithms, graph community detection, worker-backed execution, and reproducibility tests.
 - High-fidelity PDF/TIFF/vector export, full drag-resize handles, print color management, and per-plot export packaging.
-- GatingML / FlowJo / Cytobank round-trip interoperability.
+- Validated PDF generation, binary FCS writing, Parquet/Excel writers, GatingML conformance, and FlowJo / Cytobank round-trip interoperability.
 - 21 CFR Part 11 or clinical compliance.
 
 ## Original blueprint package

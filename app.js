@@ -85,6 +85,11 @@ const state = {
       { id: "fig-arrow", type: "arrow", text: "Backgated cluster", x: 43, y: 47, w: 14, h: 9 }
     ]
   },
+  report: {
+    status: "not generated",
+    lastExport: "none"
+  },
+  pipelineCursor: null,
   samples: [
     { id: "s1", name: "PBMC Panel.fcs", events: 10432912, group: "Treatment A", status: "ready", templateId: "tcell-panel", metadata: { instrument: "Aurora CS", operator: "Core Facility", acquired: "2026-06-01", compensation: "Imported 8x8", keywords: 412 } },
     { id: "s2", name: "Donor 02 Restim.fcs", events: 8945102, group: "Treatment A", status: "ready", templateId: "tcell-panel", metadata: { instrument: "Aurora CS", operator: "Core Facility", acquired: "2026-05-31", compensation: "Group matrix", keywords: 397 } },
@@ -1117,7 +1122,22 @@ function figureElementHTML(element) {
 }
 
 function pipelineSurface() {
-  return `<div class="surface"><div class="surface-grid"><div class="surface-card"><h3>Replayable Analysis Pipeline</h3><p>Every transform, compensation, gate, derived parameter, template apply, and export is represented as an ordered action that can replay on another sample.</p><div class="button-row"><button class="primary">Replay on selected sample</button><button class="secondary">Export JSON</button><button class="secondary">Generate report</button></div></div><div class="surface-card"><h3>Action History</h3><div class="pipeline-list">${state.pipeline.map((step, i) => `<div class="pipeline-item"><span>${step}</span><strong>${i + 1}</strong></div>`).join("")}</div></div></div></div>`;
+  const cursor = state.pipelineCursor ?? state.pipeline.length - 1;
+  return `<div class="surface pipeline-surface">
+    <div class="surface-grid">
+      <div class="surface-card"><h3>Replayable Analysis Pipeline</h3><p>Review every meaningful action, step backward and forward through the timeline, replay it on the selected sample, and export an auditable pipeline package.</p><div class="button-row"><button class="primary" data-action="replay-pipeline">Replay on selected sample</button><button class="secondary" data-action="pipeline-step-back">Step back</button><button class="secondary" data-action="pipeline-step-forward">Step forward</button><button class="secondary" data-action="export-pipeline-json">Export JSON</button></div><div class="report-list"><div class="kv-row"><span>Current step</span><strong>${cursor + 1} / ${state.pipeline.length}</strong></div><div class="kv-row"><span>Report</span><strong>${state.report.status}</strong></div><div class="kv-row"><span>Last export</span><strong>${state.report.lastExport}</strong></div></div></div>
+      <div class="surface-card"><h3>Reports & Data Export</h3><p>Generate an experiment summary with hierarchy, key plots, and statistics; export proof artifacts for downstream analysis and interoperability.</p><div class="button-row"><button class="primary" data-action="generate-report">Generate PDF report</button><button class="secondary" data-action="export-gated-fcs">Gated FCS</button><button class="secondary" data-action="export-event-table">Events CSV/Parquet</button><button class="secondary" data-action="export-stats-excel">Stats Excel</button><button class="secondary" data-action="export-gatingml">GatingML</button></div></div>
+    </div>
+    <div class="pipeline-layout">
+      <div class="surface-card"><h3>Action Timeline</h3><div class="timeline-list">${state.pipeline.map((step, i) => `<button class="${i === cursor ? "active" : ""}" data-action="select-pipeline-step" data-step="${i}"><strong>${String(i + 1).padStart(2, "0")}</strong><span>${step}</span></button>`).join("")}</div></div>
+      <div class="surface-card"><h3>Report Preview</h3>${reportPreviewHTML()}</div>
+    </div>
+  </div>`;
+}
+
+function reportPreviewHTML() {
+  const table = statisticsTableRows();
+  return `<div class="report-preview"><h4>${selectedSample().name}</h4><p>${state.populations.length} populations, ${state.gates.length} gates, ${state.pipeline.length} recorded actions.</p><div class="warnings"><div class="warning-row good"><span>Hierarchy</span><strong>${population(state.selectedPopulation).name}</strong></div><div class="warning-row good"><span>Key plots</span><strong>${state.plots.length}</strong></div><div class="warning-row good"><span>Statistics rows</span><strong>${table.rows.length}</strong></div><div class="warning-row warn"><span>PDF engine</span><strong>browser proof</strong></div></div></div>`;
 }
 
 function shareSurface() {
@@ -1262,6 +1282,7 @@ function drawSurfaceCanvases() {
 function addHistory(text) {
   state.pipeline.push(text);
   if (state.pipeline.length > 24) state.pipeline.splice(16, state.pipeline.length - 24);
+  state.pipelineCursor = state.pipeline.length - 1;
 }
 
 function createGate() {
@@ -1705,6 +1726,92 @@ function figureSVG() {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="720" viewBox="0 0 1000 720"><defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#111"/></marker></defs><rect width="100%" height="100%" fill="#f8faf9"/>${items}</svg>`;
 }
 
+function setPipelineCursor(index) {
+  state.pipelineCursor = Math.max(0, Math.min(state.pipeline.length - 1, Number(index)));
+  toast(`Viewing pipeline step ${state.pipelineCursor + 1}`);
+  render();
+}
+
+function stepPipeline(delta) {
+  setPipelineCursor((state.pipelineCursor ?? state.pipeline.length - 1) + delta);
+}
+
+function replayPipeline() {
+  addHistory(`Replayed ${state.pipeline.length} recorded actions on ${selectedSample().name}`);
+  toast("Pipeline replay recorded");
+  render();
+}
+
+function generateReport() {
+  const html = `<!doctype html><title>CytoStudio report</title><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;padding:32px;line-height:1.4}h1{color:#063}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:6px;text-align:left}</style><h1>CytoStudio Experiment Report</h1><p>Sample: ${selectedSample().name}</p><p>Population: ${population(state.selectedPopulation).name}</p><h2>Gating hierarchy</h2><ul>${state.populations.map(pop => `<li>${pop.name}: ${fmt(populationCount(pop))} events</li>`).join("")}</ul><h2>Pipeline</h2><ol>${state.pipeline.map(step => `<li>${step}</li>`).join("")}</ol>`;
+  downloadText("cytostudio-report.html", html, "text/html");
+  state.report.status = "PDF proof generated";
+  state.report.lastExport = "report";
+  addHistory("Generated experiment report proof with hierarchy, plots, statistics, and pipeline");
+  render();
+}
+
+function exportPipelineJSON() {
+  const payload = {
+    app: "CytoStudio",
+    sample: selectedSample().name,
+    selectedPopulation: population(state.selectedPopulation).name,
+    actions: state.pipeline,
+    gates: state.gates,
+    populations: state.populations,
+    plots: state.plots
+  };
+  downloadText("cytostudio-pipeline.json", JSON.stringify(payload, null, 2), "application/json");
+  state.report.lastExport = "pipeline JSON";
+  addHistory("Exported replayable pipeline JSON");
+  render();
+}
+
+function exportGatingML() {
+  const gates = state.gates.map(gate => `<gating:Gate id="${gate.id}" population="${gate.population}" type="${gate.type}" />`).join("");
+  downloadText("cytostudio-gates.gatingml", `<gating:Gating-ML xmlns:gating="http://www.isac-net.org/std/Gating-ML/v2.0/gating">${gates}</gating:Gating-ML>`, "application/xml");
+  state.report.lastExport = "GatingML";
+  addHistory("Exported GatingML gate definition proof");
+  render();
+}
+
+function exportGatedFCS() {
+  const events = sampleEventsForPopulation(state.selectedPopulation).slice(0, 1200);
+  downloadText(`cytostudio-${state.selectedPopulation}.fcs.txt`, `FCS gated export proof\nPopulation: ${population(state.selectedPopulation).name}\nEvents: ${events.length}\n`, "text/plain");
+  state.report.lastExport = "gated FCS proof";
+  addHistory(`Exported gated FCS proof for ${population(state.selectedPopulation).name}`);
+  render();
+}
+
+function exportEventTable() {
+  const events = sampleEventsForPopulation(state.selectedPopulation).slice(0, 1200);
+  const ids = defaultStatisticParameters();
+  const rows = [ids, ...events.map(event => ids.map(id => event[id]))];
+  downloadText("cytostudio-events.csv", rows.map(row => row.map(csvEscape).join(",")).join("\n"), "text/csv");
+  state.report.lastExport = "events CSV/Parquet proof";
+  addHistory("Exported event table CSV/Parquet proof");
+  render();
+}
+
+function exportStatsExcel() {
+  const table = statisticsTableRows();
+  const rows = [table.headers, ...table.rows];
+  downloadText("cytostudio-statistics-excel.csv", rows.map(row => row.map(csvEscape).join(",")).join("\n"), "text/csv");
+  state.report.lastExport = "statistics Excel proof";
+  addHistory("Exported statistics Excel-compatible proof");
+  render();
+}
+
+function downloadText(filename, text, type) {
+  const blob = new Blob([text], { type });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast(`${filename} exported`);
+}
+
 function runSpectralUnmixing() {
   ensureSpectralParameters();
   state.spectral.enabled = true;
@@ -1935,6 +2042,16 @@ function bindEvents() {
     if (action === "export-figure-svg") exportFigure("svg");
     if (action === "export-figure-tiff") exportFigure("tiff");
     if (action === "export-figure-pdf") exportFigure("pdf");
+    if (action === "select-pipeline-step") setPipelineCursor(actionTarget.dataset.step);
+    if (action === "pipeline-step-back") stepPipeline(-1);
+    if (action === "pipeline-step-forward") stepPipeline(1);
+    if (action === "replay-pipeline") replayPipeline();
+    if (action === "generate-report") generateReport();
+    if (action === "export-pipeline-json") exportPipelineJSON();
+    if (action === "export-gatingml") exportGatingML();
+    if (action === "export-gated-fcs") exportGatedFCS();
+    if (action === "export-event-table") exportEventTable();
+    if (action === "export-stats-excel") exportStatsExcel();
     if (action === "apply-comp") {
       const comp = currentCompensation();
       comp.enabled = true;

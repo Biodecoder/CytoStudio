@@ -672,6 +672,50 @@ table.data-table {
   border-radius: 8px;
   padding: 14px;
 }
+.pipeline-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 1.2fr) minmax(260px, 0.8fr);
+  gap: 14px;
+}
+.timeline-list {
+  display: grid;
+  gap: 7px;
+  max-height: 420px;
+  overflow: auto;
+}
+.timeline-list button {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--muted);
+  background: rgba(255,255,255,0.035);
+  text-align: left;
+}
+.timeline-list button.active {
+  color: var(--text);
+  border-color: var(--accent);
+  background: rgba(49,230,208,0.12);
+}
+.timeline-list strong {
+  color: var(--accent);
+}
+.report-preview {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(255,255,255,0.035);
+}
+.report-preview h4 {
+  margin-bottom: 6px;
+}
+.report-preview p {
+  color: var(--muted);
+  margin-bottom: 10px;
+}
 .figure-canvas {
   min-height: 560px;
   display: grid;
@@ -845,6 +889,7 @@ table.data-table {
   .workspace { grid-template-columns: 1fr; }
   .sidebar, .canvas-wrap { min-height: 360px; }
   .plot-grid, .surface-grid, .batch-grid { grid-template-columns: 1fr; }
+  .pipeline-layout { grid-template-columns: 1fr; }
   .figure-editor { grid-template-columns: 1fr; }
   .figure-page { width: 760px; height: 548px; }
   .highdim-controls { grid-template-columns: 1fr; }
