@@ -26,6 +26,9 @@ const state = {
     active: false,
     cancelled: false,
     currentFile: "",
+    phase: "idle",
+    fileBytesLoaded: 0,
+    fileBytesTotal: 0,
     completed: 0,
     total: 0
   },
@@ -423,10 +426,17 @@ function renderImportDropZone() {
   if (!dropZone) return;
   const job = state.importJob;
   if (job.active) {
-    dropZone.innerHTML = `<strong>Importing ${job.currentFile || "FCS files"}</strong><span>${job.completed} of ${job.total} files parsed. Worker import is active and can be cancelled.</span><div class="progress-track"><span style="width:${state.importProgress}%"></span></div><button class="secondary" data-action="cancel-import">Cancel import</button>`;
+    const bytes = job.fileBytesTotal ? ` · ${formatBytes(job.fileBytesLoaded)} / ${formatBytes(job.fileBytesTotal)}` : "";
+    dropZone.innerHTML = `<strong>Importing ${job.currentFile || "FCS files"}</strong><span>${job.completed} of ${job.total} files parsed · ${job.phase}${bytes}. Worker import is active and can be cancelled.</span><div class="progress-track"><span style="width:${state.importProgress}%"></span></div><button class="secondary" data-action="cancel-import">Cancel import</button>`;
     return;
   }
   dropZone.innerHTML = `<strong>Drop FCS files or folders</strong><span>FCS 3.0 / 3.1 files are parsed locally for metadata, parameters, and common numeric event data.</span>`;
+}
+
+function formatBytes(bytes = 0) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function renderSamples() {
@@ -1419,7 +1429,7 @@ async function importFiles(files) {
     return;
   }
 
-  state.importJob = { active: true, cancelled: false, currentFile: "", completed: 0, total: fileList.length };
+  state.importJob = { active: true, cancelled: false, currentFile: "", phase: "queued", fileBytesLoaded: 0, fileBytesTotal: 0, completed: 0, total: fileList.length };
   state.importProgress = 0;
   renderImportDropZone();
   const imported = [];
@@ -1429,6 +1439,9 @@ async function importFiles(files) {
     state.importProgress = Math.round((index / fileList.length) * 100);
     state.importJob.currentFile = file.name || "FCS file";
     state.importJob.completed = index;
+    state.importJob.phase = "reading";
+    state.importJob.fileBytesLoaded = 0;
+    state.importJob.fileBytesTotal = file.size || 0;
     renderImportDropZone();
     toast(`Importing ${file.name || "FCS file"} ${state.importProgress}%`);
     try {
@@ -1457,7 +1470,7 @@ async function importFiles(files) {
 
 function parseFCSFile(file, options) {
   if (state.importJob.cancelled) return Promise.reject(new Error("Import cancelled"));
-  if (!window.Worker) return file.arrayBuffer().then(buffer => fcsCore.parseFCS(buffer, options));
+  if (!window.Worker) return readFileBufferWithProgress(file).then(buffer => fcsCore.parseFCS(buffer, options));
   return new Promise(async (resolve, reject) => {
     let worker;
     try {
@@ -1485,14 +1498,46 @@ function parseFCSFile(file, options) {
       activeImportWorker = null;
       activeImportReject = null;
       try {
-        resolve(fcsCore.parseFCS(await file.arrayBuffer(), options));
+        resolve(fcsCore.parseFCS(await readFileBufferWithProgress(file), options));
       } catch (fallbackError) {
         reject(fallbackError);
       }
     };
-    const buffer = await file.arrayBuffer();
+    const buffer = await readFileBufferWithProgress(file);
+    state.importJob.phase = "parsing";
+    renderImportDropZone();
     worker.postMessage({ id, name: file.name, buffer, maxEvents: options.maxEvents }, [buffer]);
   });
+}
+
+async function readFileBufferWithProgress(file) {
+  if (!file.stream) {
+    const buffer = await file.arrayBuffer();
+    state.importJob.fileBytesLoaded = file.size || buffer.byteLength;
+    state.importProgress = importProgressPercent();
+    renderImportDropZone();
+    return buffer;
+  }
+  const reader = file.stream().getReader();
+  const chunks = [];
+  let loaded = 0;
+  while (true) {
+    if (state.importJob.cancelled) throw new Error("Import cancelled");
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    loaded += value.byteLength;
+    state.importJob.fileBytesLoaded = loaded;
+    state.importProgress = importProgressPercent();
+    renderImportDropZone();
+  }
+  return new Blob(chunks).arrayBuffer();
+}
+
+function importProgressPercent() {
+  const job = state.importJob;
+  const fileFraction = job.fileBytesTotal ? job.fileBytesLoaded / job.fileBytesTotal : 0;
+  return Math.round(((job.completed + Math.min(fileFraction, 1) * 0.82) / Math.max(job.total, 1)) * 100);
 }
 
 function cancelImport() {
