@@ -28,6 +28,7 @@ Then visit `http://localhost:5178`.
 - Spectral reference signatures, autofluorescence modeling, quality warnings, and reviewable unmixing create named fluorophore parameters for plots and statistics.
 - Gating templates can be saved from the active hierarchy, applied across a sample group, reviewed as small multiples, tailored per sample, and recomputed into a combined batch statistics table.
 - High-dimensional analysis can run a sampled reproducible UMAP/t-SNE-style embedding, assign FlowSOM/graph-style clusters, color by marker, inspect a cluster heatmap, compare samples, and backgate a selected cluster into the population tree.
+- Figure layout editor supports live linked plot tiles, labels, arrows, inset plots, snapping/alignment controls, appearance controls, template saving, and browser-native export proofs.
 
 ## Architecture choice
 
@@ -53,6 +54,7 @@ These areas are represented in the UI and state model but should not be treated 
 - Validated NNLS spectral unmixing on real raw spectra and vendor-specific spectral imports.
 - Durable reusable template files, robust per-sample gate editing, group assignment UX, and large-study batch recomputation.
 - Validated UMAP/t-SNE/FlowSOM numerical algorithms, graph community detection, worker-backed execution, and reproducibility tests.
+- High-fidelity PDF/TIFF/vector export, full drag-resize handles, print color management, and per-plot export packaging.
 - GatingML / FlowJo / Cytobank round-trip interoperability.
 - 21 CFR Part 11 or clinical compliance.
 

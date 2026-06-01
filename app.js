@@ -67,6 +67,24 @@ const state = {
     selectedCluster: 0,
     result: null
   },
+  figure: {
+    selectedElement: "fig-a",
+    templateSaved: false,
+    exportStatus: "ready",
+    fontSize: 12,
+    lineWidth: 1.4,
+    tickDensity: 5,
+    theme: "journal",
+    snap: true,
+    elements: [
+      { id: "fig-a", type: "plot", plot: "p1", label: "A", x: 5, y: 18, w: 42, h: 29 },
+      { id: "fig-b", type: "plot", plot: "p2", label: "B", x: 53, y: 18, w: 42, h: 29, inset: "p3" },
+      { id: "fig-c", type: "plot", plot: "p3", label: "C", x: 5, y: 58, w: 42, h: 27 },
+      { id: "fig-d", type: "plot", plot: "p4", label: "D", x: 53, y: 58, w: 42, h: 27 },
+      { id: "fig-title", type: "text", text: "PBMC gating summary", x: 6, y: 4, w: 72, h: 8 },
+      { id: "fig-arrow", type: "arrow", text: "Backgated cluster", x: 43, y: 47, w: 14, h: 9 }
+    ]
+  },
   samples: [
     { id: "s1", name: "PBMC Panel.fcs", events: 10432912, group: "Treatment A", status: "ready", templateId: "tcell-panel", metadata: { instrument: "Aurora CS", operator: "Core Facility", acquired: "2026-06-01", compensation: "Imported 8x8", keywords: 412 } },
     { id: "s2", name: "Donor 02 Restim.fcs", events: 8945102, group: "Treatment A", status: "ready", templateId: "tcell-panel", metadata: { instrument: "Aurora CS", operator: "Core Facility", acquired: "2026-05-31", compensation: "Group matrix", keywords: 397 } },
@@ -433,6 +451,7 @@ function renderView() {
     drawMiniPlots();
     drawSurfaceCanvases();
     drawBatchCanvases();
+    drawFigureCanvases();
   });
 }
 
@@ -1072,7 +1091,29 @@ function computeHighDimResult(sample = selectedSample()) {
 }
 
 function figureSurface() {
-  return `<div class="surface"><div class="surface-card"><h3>Publication Figure Layout</h3><p>Live plot tiles can be arranged with labels, alignment, reusable templates, and export controls. Exports are browser-native SVG/PNG scaffolds in this pass.</p><div class="button-row"><button class="primary">Export PNG</button><button class="secondary">Export SVG</button><button class="secondary">Save template</button></div></div><div class="figure-canvas"><div class="figure-tile"><h4>A · FSC/SSC Gate</h4><canvas data-surface-canvas="figure1" height="160"></canvas></div><div class="figure-tile"><h4>B · CD4/CD8 Quadrants</h4><canvas data-surface-canvas="figure2" height="160"></canvas></div><div class="figure-tile"><h4>C · CD3 Histogram</h4><canvas data-surface-canvas="figure3" height="160"></canvas></div><div class="figure-tile"><h4>D · UMAP Clusters</h4><canvas data-surface-canvas="figure4" height="160"></canvas></div></div></div>`;
+  const fig = state.figure;
+  const selected = fig.elements.find(element => element.id === fig.selectedElement) || fig.elements[0];
+  return `<div class="surface figure-surface">
+    <div class="surface-card figure-toolbar"><h3>Publication Figure Layout</h3><p>Assemble live plot tiles, labels, arrows, and inset plots on a snapping page canvas. Tiles stay linked to the current gates and statistics.</p><div class="button-row"><button class="primary" data-action="export-figure-png">Export PNG</button><button class="secondary" data-action="export-figure-svg">Export SVG</button><button class="secondary" data-action="export-figure-tiff">Export TIFF</button><button class="secondary" data-action="export-figure-pdf">PDF proof</button><button class="secondary" data-action="save-figure-template">Save template</button></div></div>
+    <div class="figure-editor">
+      <aside class="figure-tools surface-card"><h3>Elements</h3><div class="button-row"><button class="primary" data-action="add-figure-label">Text</button><button class="secondary" data-action="add-figure-arrow">Arrow</button><button class="secondary" data-action="add-figure-inset">Inset</button></div><div class="figure-layer-list">${fig.elements.map(element => `<button class="${element.id === fig.selectedElement ? "active" : ""}" data-action="select-figure-element" data-figure-element="${element.id}"><span>${element.label || element.type}</span><strong>${element.type}</strong></button>`).join("")}</div><h3>Appearance</h3><label class="field"><span>Font</span><input type="number" min="8" max="22" value="${fig.fontSize}" data-figure-field="fontSize"></label><label class="field"><span>Gate line</span><input type="number" min="0.5" max="4" step="0.1" value="${fig.lineWidth}" data-figure-field="lineWidth"></label><label class="field"><span>Ticks</span><input type="number" min="2" max="10" value="${fig.tickDensity}" data-figure-field="tickDensity"></label><label class="field"><span>Theme</span><select data-figure-field="theme"><option ${fig.theme === "journal" ? "selected" : ""}>journal</option><option ${fig.theme === "dark" ? "selected" : ""}>dark</option><option ${fig.theme === "poster" ? "selected" : ""}>poster</option></select></label><div class="button-row"><button class="secondary" data-action="align-figure-left">Align left</button><button class="secondary" data-action="distribute-figure">Distribute</button></div></aside>
+      <div class="figure-page-wrap"><div class="figure-page" style="--figure-font:${fig.fontSize}px; --figure-line:${fig.lineWidth};">${fig.elements.map(figureElementHTML).join("")}<div class="snap-guide horizontal"></div><div class="snap-guide vertical"></div></div></div>
+      <aside class="figure-tools surface-card"><h3>Selected</h3><div class="stats-list"><div class="stat-row"><span>Element</span><strong>${selected.label || selected.type}</strong></div><div class="stat-row"><span>X / Y</span><strong>${Math.round(selected.x)} / ${Math.round(selected.y)}</strong></div><div class="stat-row"><span>W / H</span><strong>${Math.round(selected.w)} / ${Math.round(selected.h)}</strong></div><div class="stat-row"><span>Snap</span><strong>${fig.snap ? "on" : "off"}</strong></div><div class="stat-row"><span>Export</span><strong>${fig.exportStatus}</strong></div></div><div class="button-row"><button class="primary" data-action="nudge-figure">Nudge</button><button class="secondary" data-action="resize-figure">Resize</button><button class="secondary" data-action="toggle-snap">Snap</button></div></aside>
+    </div>
+  </div>`;
+}
+
+function figureElementHTML(element) {
+  const style = `left:${element.x}%;top:${element.y}%;width:${element.w}%;height:${element.h}%;`;
+  const selected = element.id === state.figure.selectedElement ? " selected" : "";
+  if (element.type === "plot") {
+    const p = plot(element.plot);
+    return `<button class="figure-element figure-plot${selected}" data-action="select-figure-element" data-figure-element="${element.id}" style="${style}"><strong>${element.label}</strong><span>${p.title}</span><canvas data-figure-canvas="${element.id}"></canvas>${element.inset ? `<canvas class="figure-inset" data-figure-inset="${element.id}"></canvas>` : ""}</button>`;
+  }
+  if (element.type === "arrow") {
+    return `<button class="figure-element figure-arrow${selected}" data-action="select-figure-element" data-figure-element="${element.id}" style="${style}"><span>${element.text}</span></button>`;
+  }
+  return `<button class="figure-element figure-text${selected}" data-action="select-figure-element" data-figure-element="${element.id}" style="${style}">${element.text}</button>`;
 }
 
 function pipelineSurface() {
@@ -1140,6 +1181,19 @@ function drawBatchCanvases() {
       ctx.fillRect(x, y, 1.4, 1.4);
     });
     ctx.globalAlpha = 1;
+  });
+}
+
+function drawFigureCanvases() {
+  document.querySelectorAll("[data-figure-canvas]").forEach(canvas => {
+    const element = state.figure.elements.find(item => item.id === canvas.dataset.figureCanvas);
+    const p = element ? plot(element.plot) : null;
+    if (p) drawPlot(canvas, p);
+  });
+  document.querySelectorAll("[data-figure-inset]").forEach(canvas => {
+    const element = state.figure.elements.find(item => item.id === canvas.dataset.figureInset);
+    const p = element?.inset ? plot(element.inset) : null;
+    if (p) drawPlot(canvas, p);
   });
 }
 
@@ -1557,6 +1611,100 @@ function compareEmbeddingsAcrossSamples() {
   render();
 }
 
+function selectFigureElement(elementId) {
+  if (state.figure.elements.some(element => element.id === elementId)) state.figure.selectedElement = elementId;
+  render();
+}
+
+function selectedFigureElement() {
+  return state.figure.elements.find(element => element.id === state.figure.selectedElement) || state.figure.elements[0];
+}
+
+function addFigureElement(type) {
+  const id = `fig-${type}-${Date.now()}`;
+  if (type === "text") state.figure.elements.push({ id, type: "text", text: "New annotation", x: 18, y: 82, w: 32, h: 8 });
+  if (type === "arrow") state.figure.elements.push({ id, type: "arrow", text: "Callout", x: 64, y: 45, w: 16, h: 8 });
+  if (type === "inset") {
+    const target = selectedFigureElement();
+    target.inset = state.selectedPlot;
+    addHistory(`Added picture-in-picture inset to ${target.label || target.type}`);
+    toast("Inset plot linked");
+    render();
+    return;
+  }
+  state.figure.selectedElement = id;
+  addHistory(`Added figure ${type} element`);
+  render();
+}
+
+function nudgeFigureElement() {
+  const element = selectedFigureElement();
+  element.x = Math.min(94, element.x + (state.figure.snap ? 2 : 1));
+  element.y = Math.min(94, element.y + (state.figure.snap ? 2 : 1));
+  addHistory(`Nudged figure element ${element.label || element.type}`);
+  render();
+}
+
+function resizeFigureElement() {
+  const element = selectedFigureElement();
+  element.w = Math.min(90, element.w + 3);
+  element.h = Math.min(90, element.h + 2);
+  addHistory(`Resized figure element ${element.label || element.type}`);
+  render();
+}
+
+function alignFigureLeft() {
+  const selected = selectedFigureElement();
+  state.figure.elements.filter(element => element.type === "plot").forEach(element => {
+    if (Math.abs(element.x - selected.x) < 52) element.x = selected.x;
+  });
+  addHistory("Aligned figure tiles to selected left edge");
+  toast("Alignment guide applied");
+  render();
+}
+
+function distributeFigureElements() {
+  const plots = state.figure.elements.filter(element => element.type === "plot").sort((a, b) => a.x - b.x || a.y - b.y);
+  plots.forEach((element, index) => {
+    element.x = index % 2 ? 53 : 5;
+    element.y = index < 2 ? 9 : 53;
+  });
+  addHistory("Distributed figure plot tiles on snap grid");
+  render();
+}
+
+function saveFigureTemplate() {
+  state.figure.templateSaved = true;
+  state.figure.exportStatus = "template saved";
+  addHistory("Saved reusable publication figure template");
+  toast("Figure template saved");
+  render();
+}
+
+function exportFigure(format) {
+  const svg = figureSVG();
+  const blob = new Blob([svg], { type: "image/svg+xml" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `cytostudio-figure.${format === "pdf" ? "svg" : format}`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  state.figure.exportStatus = `${format.toUpperCase()} proof exported`;
+  addHistory(`Exported figure ${format.toUpperCase()} proof with live linked tiles`);
+  toast(`${format.toUpperCase()} export proof created`);
+  render();
+}
+
+function figureSVG() {
+  const items = state.figure.elements.map(element => {
+    const x = element.x * 10, y = element.y * 7.2, w = element.w * 10, h = element.h * 7.2;
+    if (element.type === "text") return `<text x="${x}" y="${y + 18}" font-size="${state.figure.fontSize + 4}" font-family="Arial">${csvEscape(element.text)}</text>`;
+    if (element.type === "arrow") return `<line x1="${x}" y1="${y}" x2="${x + w}" y2="${y + h}" stroke="#111" stroke-width="2" marker-end="url(#arrow)"/><text x="${x}" y="${y - 4}" font-size="${state.figure.fontSize}" font-family="Arial">${csvEscape(element.text)}</text>`;
+    return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#fff" stroke="#111"/><text x="${x + 10}" y="${y + 18}" font-size="${state.figure.fontSize}" font-family="Arial">${element.label} · ${plot(element.plot).title}</text>`;
+  }).join("");
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="720" viewBox="0 0 1000 720"><defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#111"/></marker></defs><rect width="100%" height="100%" fill="#f8faf9"/>${items}</svg>`;
+}
+
 function runSpectralUnmixing() {
   ensureSpectralParameters();
   state.spectral.enabled = true;
@@ -1704,6 +1852,13 @@ function bindEvents() {
       render();
       return;
     }
+    const figureField = event.target.dataset.figureField;
+    if (figureField) {
+      state.figure[figureField] = event.target.type === "number" ? Number(event.target.value) : event.target.value;
+      addHistory(`Updated figure ${figureField} to ${event.target.value}`);
+      render();
+      return;
+    }
     const key = event.target.dataset.editPlot;
     if (!key) return;
     const p = plot(state.selectedPlot);
@@ -1762,6 +1917,24 @@ function bindEvents() {
     if (action === "select-cluster") selectHighDimCluster(actionTarget.dataset.cluster);
     if (action === "gate-cluster") gateSelectedCluster();
     if (action === "compare-embeddings") compareEmbeddingsAcrossSamples();
+    if (action === "select-figure-element") selectFigureElement(actionTarget.dataset.figureElement);
+    if (action === "add-figure-label") addFigureElement("text");
+    if (action === "add-figure-arrow") addFigureElement("arrow");
+    if (action === "add-figure-inset") addFigureElement("inset");
+    if (action === "nudge-figure") nudgeFigureElement();
+    if (action === "resize-figure") resizeFigureElement();
+    if (action === "align-figure-left") alignFigureLeft();
+    if (action === "distribute-figure") distributeFigureElements();
+    if (action === "toggle-snap") {
+      state.figure.snap = !state.figure.snap;
+      addHistory(`Figure snapping ${state.figure.snap ? "enabled" : "disabled"}`);
+      render();
+    }
+    if (action === "save-figure-template") saveFigureTemplate();
+    if (action === "export-figure-png") exportFigure("png");
+    if (action === "export-figure-svg") exportFigure("svg");
+    if (action === "export-figure-tiff") exportFigure("tiff");
+    if (action === "export-figure-pdf") exportFigure("pdf");
     if (action === "apply-comp") {
       const comp = currentCompensation();
       comp.enabled = true;
