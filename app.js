@@ -22,6 +22,13 @@ const state = {
   inspectorTab: "plot",
   layout: JSON.parse(localStorage.getItem("cyto.layout") || "{}"),
   importProgress: 0,
+  importJob: {
+    active: false,
+    cancelled: false,
+    currentFile: "",
+    completed: 0,
+    total: 0
+  },
   compensation: {
     enabled: true,
     version: 1,
@@ -168,6 +175,8 @@ const state = {
 
 let syntheticEvents = [];
 let highDimTimer = null;
+let activeImportWorker = null;
+let activeImportReject = null;
 
 function defaultTransformSettings() {
   return { cofactor: 150, width: 18, floor: 1 };
@@ -400,12 +409,24 @@ function render() {
   recomputePopulationCounts();
   document.getElementById("app").dataset.theme = state.theme;
   document.getElementById("app").dataset.contrast = state.accessibility.contrast ? "high" : "normal";
+  renderImportDropZone();
   renderSamples();
   renderTree();
   renderView();
   renderInspector();
   renderStatus();
   renderOnboarding();
+}
+
+function renderImportDropZone() {
+  const dropZone = document.getElementById("dropZone");
+  if (!dropZone) return;
+  const job = state.importJob;
+  if (job.active) {
+    dropZone.innerHTML = `<strong>Importing ${job.currentFile || "FCS files"}</strong><span>${job.completed} of ${job.total} files parsed. Worker import is active and can be cancelled.</span><div class="progress-track"><span style="width:${state.importProgress}%"></span></div><button class="secondary" data-action="cancel-import">Cancel import</button>`;
+    return;
+  }
+  dropZone.innerHTML = `<strong>Drop FCS files or folders</strong><span>FCS 3.0 / 3.1 files are parsed locally for metadata, parameters, and common numeric event data.</span>`;
 }
 
 function renderSamples() {
@@ -1385,32 +1406,44 @@ async function importFiles(files) {
     return;
   }
 
+  state.importJob = { active: true, cancelled: false, currentFile: "", completed: 0, total: fileList.length };
+  state.importProgress = 0;
+  renderImportDropZone();
   const imported = [];
   for (let index = 0; index < fileList.length; index++) {
+    if (state.importJob.cancelled) break;
     const file = fileList[index];
     state.importProgress = Math.round((index / fileList.length) * 100);
+    state.importJob.currentFile = file.name || "FCS file";
+    state.importJob.completed = index;
+    renderImportDropZone();
     toast(`Importing ${file.name || "FCS file"} ${state.importProgress}%`);
     try {
       const parsed = await parseFCSFile(file, { maxEvents: 25000 });
+      if (state.importJob.cancelled) break;
       imported.push(sampleFromParsedFCS(file.name, parsed));
     } catch (error) {
+      if (state.importJob.cancelled || /cancelled/i.test(error.message)) break;
       imported.push(fallbackSample(file.name, error));
     }
   }
 
   state.importProgress = 100;
+  state.importJob.completed = imported.length;
+  state.importJob.active = false;
   imported.forEach(sample => state.samples.push(sample));
   const firstParsed = imported.find(sample => sample.parsed && sample.parameters?.length);
   if (firstParsed) {
     state.selectedSample = firstParsed.id;
     adoptImportedParameters(firstParsed);
   }
-  addHistory(`Imported ${imported.length} FCS file(s) through worker-backed parser`);
-  toast(firstParsed ? "FCS import complete with parsed events" : "Import finished with metadata fallback");
+  addHistory(state.importJob.cancelled ? `Cancelled FCS import after ${imported.length} file(s)` : `Imported ${imported.length} FCS file(s) through worker-backed parser`);
+  toast(state.importJob.cancelled ? "FCS import cancelled" : (firstParsed ? "FCS import complete with parsed events" : "Import finished with metadata fallback"));
   render();
 }
 
 function parseFCSFile(file, options) {
+  if (state.importJob.cancelled) return Promise.reject(new Error("Import cancelled"));
   if (!window.Worker) return file.arrayBuffer().then(buffer => fcsCore.parseFCS(buffer, options));
   return new Promise(async (resolve, reject) => {
     let worker;
@@ -1425,13 +1458,19 @@ function parseFCSFile(file, options) {
       return;
     }
     const id = `${Date.now()}-${Math.random()}`;
+    activeImportWorker = worker;
+    activeImportReject = reject;
     worker.onmessage = event => {
       worker.terminate();
+      activeImportWorker = null;
+      activeImportReject = null;
       if (event.data.ok) resolve(event.data.parsed);
       else reject(new Error(event.data.error));
     };
     worker.onerror = async error => {
       worker.terminate();
+      activeImportWorker = null;
+      activeImportReject = null;
       try {
         resolve(fcsCore.parseFCS(await file.arrayBuffer(), options));
       } catch (fallbackError) {
@@ -1441,6 +1480,22 @@ function parseFCSFile(file, options) {
     const buffer = await file.arrayBuffer();
     worker.postMessage({ id, name: file.name, buffer, maxEvents: options.maxEvents }, [buffer]);
   });
+}
+
+function cancelImport() {
+  state.importJob.cancelled = true;
+  state.importJob.active = false;
+  if (activeImportWorker) {
+    activeImportWorker.terminate();
+    activeImportWorker = null;
+  }
+  if (activeImportReject) {
+    activeImportReject(new Error("Import cancelled"));
+    activeImportReject = null;
+  }
+  addHistory("Cancelled active FCS import");
+  toast("FCS import cancelled");
+  render();
 }
 
 function fallbackSample(name, error) {
@@ -2255,6 +2310,7 @@ function bindEvents() {
       saveLayout();
       render();
     }
+    if (action === "cancel-import") cancelImport();
     if (action === "command") openCommandPalette();
     if (action === "create-gate") createGate();
     if (action === "add-plot") {
