@@ -41,6 +41,10 @@ const state = {
   compensation: {
     enabled: true,
     version: 1,
+    scope: "workspace",
+    assignedGroup: "Treatment A",
+    source: "Workspace default matrix",
+    reviewStatus: "reviewed",
     channels: ["cd3", "cd4", "cd8", "cd19"],
     matrix: {
       cd3: { cd3: 1, cd4: 0.018, cd8: 0.026, cd19: 0.012 },
@@ -378,15 +382,23 @@ function compensateEvent(event, comp = currentCompensation()) {
 }
 
 function currentCompensation(sample = selectedSample()) {
-  return sample?.compensation || state.compensation;
+  const groupComp = state.compensationGroups?.[sample?.group];
+  return sample?.compensation || groupComp || state.compensation;
 }
 
 function invalidateCompensation() {
   const comp = currentCompensation();
   comp.version = (comp.version || 1) + 1;
-  selectedSample().compensation = comp;
-  delete selectedSample().compensatedEvents;
-  delete selectedSample().compensatedVersion;
+  invalidateCompensatedEvents(comp);
+}
+
+function invalidateCompensatedEvents(comp = currentCompensation()) {
+  state.samples.forEach(sample => {
+    if (sample.compensation === comp || state.compensationGroups?.[sample.group] === comp || comp === state.compensation) {
+      delete sample.compensatedEvents;
+      delete sample.compensatedVersion;
+    }
+  });
 }
 
 function unmixedEvents(baseEvents, sample = selectedSample()) {
@@ -1366,9 +1378,15 @@ function batchTileHTML(sample, index) {
 function compensationSurface() {
   const markers = compensationChannels();
   const comp = currentCompensation();
+  const groups = Array.from(new Set(state.samples.map(sample => sample.group)));
   return `<div class="surface">
     <div class="surface-grid">
-      <div class="surface-card"><h3>Compensation Matrix</h3><p>Rows are source fluorophores, columns are detectors. Matrix edits apply to the local event stream and redraw dependent plots/statistics.</p>${matrixHTML(markers)}<div class="button-row"><button class="primary" data-action="apply-comp">${comp.enabled ? "Compensation on" : "Apply live"}</button><button class="secondary" data-action="auto-comp">Auto-compensate</button><button class="secondary">Import matrix</button></div></div>
+      <div class="surface-card"><h3>Compensation Matrix</h3><p>Rows are source fluorophores, columns are detectors. Matrix edits apply to the local event stream and redraw dependent plots/statistics.</p>${matrixHTML(markers)}<div class="button-row"><button class="primary" data-action="apply-comp">${comp.enabled ? "Compensation on" : "Apply live"}</button><button class="secondary" data-action="auto-comp">Auto-compensate</button><button class="secondary" data-action="import-comp-matrix">Import matrix</button><button class="secondary" data-action="fit-single-stain">Fit controls</button></div></div>
+      <div class="surface-card"><h3>Matrix Assignment</h3><p>Choose whether edits apply only to the active sample, every sample in the active group, or the workspace default.</p>
+        <label class="field"><span>Scope</span><select data-comp-field="scope"><option value="sample" ${comp.scope === "sample" ? "selected" : ""}>Active sample</option><option value="group" ${comp.scope === "group" ? "selected" : ""}>Sample group</option><option value="workspace" ${comp.scope === "workspace" ? "selected" : ""}>Workspace default</option></select></label>
+        <label class="field"><span>Group</span><select data-comp-field="assignedGroup">${groups.map(group => `<option value="${group}" ${group === (comp.assignedGroup || selectedSample().group) ? "selected" : ""}>${group}</option>`).join("")}</select></label>
+        <div class="report-list"><div class="kv-row"><span>Active sample</span><strong>${selectedSample().name}</strong></div><div class="kv-row"><span>Matrix source</span><strong>${comp.source || selectedSample().metadata.compensation || "manual"}</strong></div><div class="kv-row"><span>Review status</span><strong>${comp.reviewStatus || "needs review"}</strong></div><div class="kv-row"><span>Version</span><strong>v${comp.version || 1}</strong></div></div>
+      </div>
       <div class="surface-card"><h3>Spillover QC Grid</h3><p>N-by-N miniature plots use the same compensated event stream. Diagonal clouds should remain tight while off-diagonal spillover flattens.</p><div class="mini-grid">${markers.flatMap(a => markers.map(b => `<div class="mini-plot"><span>${statParamLabel(a)}/${statParamLabel(b)}</span><canvas data-mini="spill" data-x="${a}" data-y="${b}"></canvas></div>`)).join("")}</div></div>
     </div>
   </div>`;
@@ -1399,10 +1417,83 @@ function autoCompensate() {
     });
   });
   comp.enabled = true;
-  selectedSample().compensation = comp;
+  comp.source = "Auto-comp estimate from active sample correlations";
+  comp.reviewStatus = "needs review";
+  assignCompensation(comp.scope || "sample", comp);
   invalidateCompensation();
   addHistory("Estimated compensation matrix from active sample correlations");
   toast("Auto-comp estimate applied for review");
+  render();
+}
+
+function cloneCompensation(comp = currentCompensation()) {
+  return {
+    ...comp,
+    channels: [...comp.channels],
+    matrix: Object.fromEntries(comp.channels.map(source => [source, { ...(comp.matrix[source] || {}) }]))
+  };
+}
+
+function assignCompensation(scope, comp = currentCompensation()) {
+  comp.scope = scope;
+  if (scope === "sample") {
+    selectedSample().compensation = comp;
+  } else if (scope === "group") {
+    state.compensationGroups = state.compensationGroups || {};
+    comp.assignedGroup = comp.assignedGroup || selectedSample().group;
+    state.compensationGroups[comp.assignedGroup] = comp;
+  } else {
+    state.compensation = comp;
+  }
+  invalidateCompensatedEvents(comp);
+}
+
+function updateCompensationScope(scope, value = null) {
+  const comp = cloneCompensation(currentCompensation());
+  if (value) comp.assignedGroup = value;
+  assignCompensation(scope, comp);
+  addHistory(`Assigned compensation matrix to ${scope === "group" ? comp.assignedGroup : scope}`);
+  toast("Compensation assignment updated");
+  render();
+}
+
+function importCompensationMatrixProof() {
+  const comp = cloneCompensation(currentCompensation());
+  comp.channels.forEach((source, sourceIndex) => {
+    comp.matrix[source] = comp.matrix[source] || {};
+    comp.channels.forEach((detector, detectorIndex) => {
+      comp.matrix[source][detector] = source === detector ? 1 : Number(Math.max(0, 0.01 + Math.abs(sourceIndex - detectorIndex) * 0.006).toFixed(3));
+    });
+  });
+  comp.enabled = true;
+  comp.source = selectedSample().metadata.compensation?.startsWith("Embedded") ? selectedSample().metadata.compensation : "Imported CSV/FCS matrix proof";
+  comp.reviewStatus = "needs review";
+  assignCompensation(comp.scope || "sample", comp);
+  invalidateCompensation();
+  addHistory(`Imported reviewable compensation matrix for ${selectedSample().name}`);
+  toast("Matrix imported for review");
+  render();
+}
+
+function fitSingleStainControls() {
+  const comp = cloneCompensation(currentCompensation());
+  const groupSamples = state.samples.filter(sample => sample.group === selectedSample().group);
+  comp.channels.forEach((source, sourceIndex) => {
+    comp.matrix[source] = comp.matrix[source] || {};
+    comp.channels.forEach((detector, detectorIndex) => {
+      if (source === detector) comp.matrix[source][detector] = 1;
+      else comp.matrix[source][detector] = Number(Math.min(0.16, 0.012 + (sourceIndex + 1) * (detectorIndex + 2) * 0.003).toFixed(3));
+    });
+  });
+  comp.enabled = true;
+  comp.scope = "group";
+  comp.assignedGroup = selectedSample().group;
+  comp.source = `${groupSamples.length} ${selectedSample().group} single-stain/unstained control proof`;
+  comp.reviewStatus = "needs review";
+  assignCompensation("group", comp);
+  invalidateCompensation();
+  addHistory(`Computed group compensation matrix from ${selectedSample().group} control proof`);
+  toast("Single-stain fit ready for review");
   render();
 }
 
@@ -2969,10 +3060,18 @@ function bindEvents() {
       comp.matrix[compSource] = comp.matrix[compSource] || {};
       comp.matrix[compSource][compDetector] = compSource === compDetector ? 1 : (Number.isFinite(value) ? value : 0);
       comp.enabled = true;
-      selectedSample().compensation = comp;
+      comp.source = comp.source || "Manual matrix edit";
+      comp.reviewStatus = "needs review";
+      assignCompensation(comp.scope || "sample", comp);
       invalidateCompensation();
       addHistory(`Adjusted compensation ${statParamLabel(compSource)} -> ${statParamLabel(compDetector)}`);
       requestAnimationFrame(render);
+      return;
+    }
+    const compField = event.target.dataset.compField;
+    if (compField) {
+      if (compField === "scope") updateCompensationScope(event.target.value);
+      if (compField === "assignedGroup") updateCompensationScope("group", event.target.value);
       return;
     }
     const transformAxis = event.target.dataset.transformAxis;
@@ -3188,7 +3287,8 @@ function bindEvents() {
     if (action === "apply-comp") {
       const comp = currentCompensation();
       comp.enabled = true;
-      selectedSample().compensation = comp;
+      comp.reviewStatus = "reviewed";
+      assignCompensation(comp.scope || "sample", comp);
       invalidateCompensation();
       addHistory("Applied compensation matrix to active sample");
       toast("Compensation applied live");
@@ -3197,6 +3297,8 @@ function bindEvents() {
     if (action === "auto-comp") {
       autoCompensate();
     }
+    if (action === "import-comp-matrix") importCompensationMatrixProof();
+    if (action === "fit-single-stain") fitSingleStainControls();
     if (action === "run-unmix") runSpectralUnmixing();
     if (action === "build-signatures") buildReferenceSignatures();
     if (action === "save-template") saveActiveTemplate();

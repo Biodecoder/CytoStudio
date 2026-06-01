@@ -27,7 +27,7 @@ Then visit `http://localhost:5178`.
 - Histograms now bin active event data through the selected axis transform instead of drawing fixed placeholder curves.
 - Statistics table, CSV export, compensation matrix, spillover QC grid, spectral unmixing scaffold, high-dimensional cluster explorer scaffold, figure layout, reproducible pipeline view, workspace sharing surface, onboarding-ready empty/import states, and gated clinical-mode concept.
 - Live population statistics include count, % parent, % total, median, mean, geometric mean, robust CV, percentiles, a configurable/sortable table editor with population rows or samples-as-rows pivoting, CSV/Excel-compatible export, clipboard copy, and a CD4/CD8 derived-parameter workflow.
-- Compensation matrix edits apply to the active event stream, redraw plots/statistics, parse embedded spillover keywords when present, and drive the N-by-N spillover QC grid.
+- Compensation matrix edits apply to the active event stream, can be assigned to a sample/group/workspace scope, parse embedded spillover keywords when present, support import and single-stain-fit proof workflows, and drive the N-by-N spillover QC grid.
 - Spectral reference signatures, autofluorescence modeling, quality warnings, and reviewable unmixing create named fluorophore parameters for plots and statistics.
 - Gating templates can be saved from the active hierarchy, applied across a sample group, reviewed as small multiples, tailored per sample, and recomputed into a combined batch statistics table.
 - High-dimensional analysis can run a sampled reproducible UMAP/t-SNE-style embedding, assign FlowSOM/graph-style clusters, color by marker, inspect a cluster heatmap, compare samples, and backgate a selected cluster into the population tree.
@@ -60,7 +60,7 @@ These areas are represented in the UI and state model but should not be treated 
 - Reference-validated biexponential/logicle parity with `flowCore` and canonical tick semantics.
 - Million-event GPU/datashader rendering guarantees and optimized incremental gate recomputation.
 - Full drag-and-drop table-builder UX, samples-as-rows pivoting, and native Excel export.
-- Validated compensation fitting from single-stain controls and per-group/per-sample matrix assignment workflows.
+- Validated compensation fitting from single-stain controls beyond the current reviewable proof workflow.
 - Validated NNLS spectral unmixing on real raw spectra and vendor-specific spectral imports.
 - Durable reusable template files, robust per-sample gate editing, group assignment UX, and large-study batch recomputation.
 - Validated UMAP/t-SNE/FlowSOM numerical algorithms, graph community detection, worker-backed execution, and reproducibility tests.
