@@ -13,6 +13,7 @@ This audit maps the current prototype to the requested prompt sequence. The app 
 - FCS foundation: `fcs-core.js` plus `tests/fcs-core.test.cjs`.
 - Worker import adapter: `fcs-import-worker.js`.
 - Large-file import boundary: `docs/fcs-large-file-strategy.md`.
+- Public FCS fixture provenance: `tests/fixtures/public/flowWorkspaceData/manifest.json`.
 - Verification performed: JavaScript syntax check, local HTTP 200 check, Playwright desktop/mobile screenshots, Command-K check, tab-surface checks, and mobile overflow check.
 
 ## Prompt-by-prompt status
@@ -21,7 +22,7 @@ This audit maps the current prototype to the requested prompt sequence. The app 
 |---|---|---|
 | 00 Vision / guardrails | Prototype complete | Three-pane app shell, state store, README architecture choice, light/dark support. Tauri/Rust/Arrow are documented next steps. |
 | 01 Shell / navigation / design system | Prototype complete | Left sample rail, population tree, center canvas, inspector, toolbar, status bar, Command-K, responsive layout, persisted theme. Panel resizing/collapse is only lightly scaffolded. |
-| 02 FCS import / experiment manager | Prototype partial | Drag-drop and file-picker imports now parse FCS 3.0/3.1 header/TEXT metadata, parameter labels, common numeric event data, keyword counts, sampled events, and spillover through `fcs-core.js`, with `fcs-import-worker.js` moving served-local parsing off the UI thread, streamed byte-level progress/cancel state, event-level parse progress, direct parser fallback when workers are unavailable, metadata-only preflight for oversized files, and sample-to-sample drag-drop grouping in the experiment browser. Fixture tests cover escaped delimiters, metadata-only parsing, max-event limits, parser progress callbacks, transforms, spillover, big-endian integer data, and 8/16/32-bit integer widths. Production memory mapping and broad public fixture coverage remain. |
+| 02 FCS import / experiment manager | Prototype partial | Drag-drop and file-picker imports now parse FCS 3.0/3.1 header/TEXT metadata, parameter labels, common numeric event data, keyword counts, sampled events, and spillover through `fcs-core.js`, with `fcs-import-worker.js` moving served-local parsing off the UI thread, streamed byte-level progress/cancel state, event-level parse progress, direct parser fallback when workers are unavailable, metadata-only preflight for oversized files, and sample-to-sample drag-drop grouping in the experiment browser. Fixture tests cover escaped delimiters, metadata-only parsing, max-event limits, parser progress callbacks, transforms, spillover, big-endian integer data, 8/16/32-bit integer widths, and a public Bioconductor `flowWorkspaceData` FCS3.0 DIVA fixture. Production memory mapping and broader public/vendor fixture coverage remain. |
 | 03 Transforms / scaling | Prototype partial | Linear, log, arcsinh, and logicle-like transforms now live in shared tested code, expose per-axis floor/width/cofactor controls, drive scatter/density normalization, and bin histograms from active event data. Reference parity with `flowCore`, canonical tick semantics, and auto-default tuning remain. |
 | 04 Plot canvas | Prototype complete | Canvas scatter, density, histogram, UMAP-style plots, legends, overlays, zoom gesture capture, publication-style chrome. GPU/datashader-scale rendering is not yet implemented. |
 | 05 Manual gating | Prototype partial | Toolbar tools, gate creation, rectangle/polygon/lasso/ellipse/quadrant/interval overlays, labels, hierarchy updates, keyboard nudge feedback, and normalized gate geometry evaluation. Full vertex editing and robust boolean geometry remain. |
@@ -39,4 +40,4 @@ This audit maps the current prototype to the requested prompt sequence. The app 
 
 ## Next best slice
 
-The best next build slice is to continue hardening Prompt 02 with public FCS fixture coverage.
+The best next build slice is to continue hardening Prompt 02 with broader public/vendor FCS fixture coverage or move to the next highest-impact production gap: validated transform parity in Prompt 03.

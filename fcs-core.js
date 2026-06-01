@@ -73,14 +73,18 @@
   function getParameters(keywords) {
     const count = keywordNumber(keywords, "$PAR");
     const parameters = [];
+    const seenIds = new Map();
     for (let i = 1; i <= count; i++) {
-      const raw = keywords[`$P${i}N`] || `P${i}`;
-      const stain = keywords[`$P${i}S`] || "";
+      const raw = String(keywords[`$P${i}N`] || `P${i}`).trim();
+      const stain = String(keywords[`$P${i}S`] || "").trim();
       const bits = keywordNumber(keywords, `$P${i}B`, 32);
       const range = keywordNumber(keywords, `$P${i}R`, 0);
+      const baseId = safeId(stain || raw);
+      const seen = seenIds.get(baseId) || 0;
+      seenIds.set(baseId, seen + 1);
       parameters.push({
         index: i,
-        id: safeId(stain || raw),
+        id: seen ? `${baseId}_${i}` : baseId,
         raw,
         stain,
         label: stain ? `${stain} (${raw})` : raw,

@@ -1,4 +1,6 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const { parseFCS, parseFCSMetadata, parseHeader, parseTextSegment, transforms } = require("../fcs-core.js");
 
 function pad(value, width) {
@@ -165,6 +167,25 @@ assert.equal(limited.events.length, 2);
 const metadataStyleLimit = parseFCS(buildFixture(), { maxEvents: 0 });
 assert.equal(metadataStyleLimit.parsedEventCount, 0);
 assert.equal(metadataStyleLimit.events.length, 0);
+
+const publicManifestPath = path.join(__dirname, "fixtures/public/flowWorkspaceData/manifest.json");
+const publicManifest = JSON.parse(fs.readFileSync(publicManifestPath, "utf8"));
+const publicFixture = publicManifest.fixtures[0];
+const publicFixtureBuffer = fs.readFileSync(path.join(__dirname, "fixtures/public/flowWorkspaceData", publicFixture.path));
+const publicMetadata = parseFCSMetadata(publicFixtureBuffer);
+assert.equal(publicMetadata.version, publicFixture.fcsVersion);
+assert.equal(publicMetadata.eventCount, publicFixture.events);
+assert.equal(publicMetadata.parameters.length, publicFixture.parameters);
+assert.equal(publicMetadata.metadata.instrument, publicFixture.instrument);
+assert.equal(publicMetadata.parsedEventCount, 0);
+assert.equal(publicMetadata.bytesPerEvent, 60);
+assert.deepEqual(publicMetadata.parameters.slice(0, 5).map(parameter => parameter.id), ["time", "fsc_a", "fsc_h", "fsc_w", "ssc_a"]);
+assert.equal(new Set(publicMetadata.parameters.map(parameter => parameter.id)).size, publicMetadata.parameters.length);
+const publicParsed = parseFCS(publicFixtureBuffer, { maxEvents: 128, progressInterval: 64 });
+assert.equal(publicParsed.parsedEventCount, 128);
+assert.equal(publicParsed.events.length, 128);
+assert.ok(Number.isFinite(publicParsed.events[0].fsc_a));
+assert.ok(Number.isFinite(publicParsed.events[0].cd3));
 
 const progressEvents = [];
 const progressed = parseFCS(buildFixture(), {

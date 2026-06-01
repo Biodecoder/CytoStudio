@@ -1,0 +1,29 @@
+{
+  "source": {
+    "package": "flowWorkspaceData",
+    "version": "3.24.0",
+    "repository": "Bioconductor 3.23 experiment data",
+    "archiveUrl": "https://bioconductor.org/packages/release/data/experiment/src/contrib/flowWorkspaceData_3.24.0.tar.gz",
+    "archiveSha256": "1a935924e2a94e25dcb19e28e3ab52ed62773c33765bd18b04143411da4d67cc",
+    "license": "GPL-2",
+    "description": "Bioconductor experiment-data package containing FlowJo/DIVA workspaces and associated FCS files for flowWorkspace, openCyto, and CytoML examples."
+  },
+  "fixtures": [
+    {
+      "path": "diva/124500.fcs",
+      "sourcePath": "flowWorkspaceData/inst/extdata/diva/124500.fcs",
+      "sha256": "69c90eaeb68ecfe742ea970f4ddad9a2351895d4191e83604d2640c6c8baf4a4",
+      "bytes": 1149611,
+      "fcsVersion": "FCS3.0",
+      "events": 19090,
+      "parameters": 15,
+      "instrument": "FACSCantoII",
+      "coverage": [
+        "public Bioconductor FCS3.0 fixture",
+        "DIVA-derived metadata",
+        "15 float parameters",
+        "vendor blank marker labels normalized to raw channel names"
+      ]
+    }
+  ]
+}

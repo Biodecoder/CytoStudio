@@ -17,7 +17,7 @@ Then visit `http://localhost:5178`.
 - Three-pane macOS-style workspace with toolbar, sample rail, population hierarchy, canvas, inspector, and status bar.
 - Dark/light appearance toggle, Command-K palette, keyboard shortcuts, drag-drop import scaffold, and persisted appearance state.
 - Synthetic cytometry event model with scatter, density, histogram, and UMAP-style plot tiles drawn on canvas.
-- Local FCS 3.0/3.1 parser for standard list-mode numeric files, including header/TEXT parsing, keywords, parameter labels, common integer/float event payloads, spillover, escaped delimiters, max-event limits, big-endian integer fixtures, and tested fixture coverage.
+- Local FCS 3.0/3.1 parser for standard list-mode numeric files, including header/TEXT parsing, keywords, parameter labels, common integer/float event payloads, spillover, escaped delimiters, max-event limits, big-endian integer fixtures, and a public Bioconductor FCS3.0 regression fixture.
 - Worker-backed FCS import path parses dropped files off the UI thread when served locally, with streamed byte-level progress, event-level parse progress, cancellation, direct parser fallback for constrained contexts, and metadata-only preflight for oversized files.
 - Experiment browser supports sample grouping by dragging one sample onto another sample's group.
 - Manual gate tool selection, gate creation, gate hierarchy, boolean-gate scaffold, backgating/live-linking messaging, and live statistics.
@@ -44,6 +44,7 @@ The blueprint recommends Tauri 2 plus a Rust/Arrow data core and optional Python
 - `fcs-core.js` FCS parsing and cytometry transform helpers, usable in both browser and Node tests.
 - `fcs-import-worker.js` worker adapter for off-main-thread FCS parsing.
 - `docs/fcs-large-file-strategy.md` explicit browser-prototype boundary and native memory-map handoff plan.
+- `tests/fixtures/public/flowWorkspaceData/manifest.json` provenance for the curated public FCS fixture from Bioconductor `flowWorkspaceData` (GPL-2).
 - `styles.css` app design system and responsive macOS-style layout.
 - `index.html` app shell.
 - `blueprint-catalog.html`, `CytoStudio-Blueprint-and-Codex-Prompts.md`, and `prompts/` source product blueprint.
@@ -54,7 +55,7 @@ The next engineering step is to wrap this surface with Tauri and replace the syn
 
 These areas are represented in the UI and state model but should not be treated as validated scientific or regulatory behavior:
 
-- Complete FCS edge-case coverage, production memory mapping, public fixture coverage, and raw spectral vendor formats.
+- Complete FCS edge-case coverage beyond the current curated public fixture, production memory mapping, and raw spectral vendor formats.
 - Reference-validated biexponential/logicle parity with `flowCore` and canonical tick semantics.
 - Million-event GPU/datashader rendering guarantees and optimized incremental gate recomputation.
 - Full drag-and-drop table-builder UX, samples-as-rows pivoting, and native Excel export.
