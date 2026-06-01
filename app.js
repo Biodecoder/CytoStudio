@@ -157,13 +157,22 @@ const state = {
   },
   clinical: {
     enabled: false,
+    authenticated: false,
     locked: false,
     signed: false,
     user: "Research User",
     role: "Research",
     retentionYears: 7,
     access: "local roles",
-    exportStatus: "not exported"
+    exportStatus: "not exported",
+    version: 1,
+    signatureReason: "Report review complete",
+    signatures: [],
+    users: [
+      { id: "research", name: "Research User", role: "Research", active: true },
+      { id: "reviewer", name: "Clinical Reviewer", role: "Reviewer", active: true },
+      { id: "operator", name: "Clinical Operator", role: "Operator", active: true }
+    ]
   },
   pipelineCursor: null,
   samples: [
@@ -265,6 +274,16 @@ function pipelineRecordKind(record) {
 function pipelineRecords() {
   initializePipelineRecords();
   return state.pipelineRecords;
+}
+
+function auditRecordHash(record, index = 0) {
+  const text = `${index}|${record.id}|${record.timestamp}|${record.user || ""}|${record.label}|${record.clinicalVersion || ""}`;
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `AUD-${(hash >>> 0).toString(16).toUpperCase().padStart(8, "0")}`;
 }
 
 function defaultTransformSettings(parameter = null, events = []) {
@@ -1774,11 +1793,13 @@ function shareSurface() {
 function clinicalSurface() {
   const c = state.clinical;
   const records = pipelineRecords();
+  const signed = c.signatures.at(-1);
   return `<div class="surface"><div class="surface-grid">
-    <div class="surface-card"><h3>Clinical Mode</h3><p>Clinical mode is off by default and intentionally isolated from research workflows. This prototype surfaces regulated-environment controls without claiming validation or legal compliance.</p><div class="button-row"><button class="primary" data-action="enable-clinical">${c.enabled ? "Clinical mode enabled" : "Enable clinical mode"}</button><button class="secondary" data-action="lock-analysis">Lock analysis</button><button class="secondary" data-action="sign-report">E-sign report</button><button class="secondary" data-action="export-compliance">Compliance export</button></div><div class="report-list"><div class="kv-row"><span>User</span><strong>${c.user}</strong></div><div class="kv-row"><span>Role</span><strong>${c.role}</strong></div><div class="kv-row"><span>Analysis lock</span><strong>${c.locked ? "finalized" : "editable"}</strong></div><div class="kv-row"><span>Signature</span><strong>${c.signed ? "signed" : "not signed"}</strong></div></div></div>
-    <div class="surface-card"><h3>Configuration</h3><label class="field"><span>Role</span><select data-clinical-field="role"><option ${c.role === "Research" ? "selected" : ""}>Research</option><option ${c.role === "Operator" ? "selected" : ""}>Operator</option><option ${c.role === "Reviewer" ? "selected" : ""}>Reviewer</option><option ${c.role === "Administrator" ? "selected" : ""}>Administrator</option></select></label><label class="field"><span>Retention</span><input type="number" min="1" max="25" value="${c.retentionYears}" data-clinical-field="retentionYears"></label><label class="field"><span>Access</span><select data-clinical-field="access"><option ${c.access === "local roles" ? "selected" : ""}>local roles</option><option ${c.access === "directory sync" ? "selected" : ""}>directory sync</option><option ${c.access === "read-only review" ? "selected" : ""}>read-only review</option></select></label></div>
-    <div class="surface-card"><h3>Immutable Audit Trail</h3><div class="timeline-list">${records.slice(-10).map(record => `<button><strong>${new Date(record.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</strong><span>${c.user} · ${pipelineRecordLabel(record)}<em>${pipelineRecordKind(record)}</em></span></button>`).join("")}</div></div>
-    <div class="surface-card"><h3>Compliance Export Checklist</h3><div class="warnings"><div class="warning-row ${c.enabled ? "good" : "warn"}"><span>Clinical mode</span><strong>${c.enabled ? "enabled" : "off"}</strong></div><div class="warning-row ${c.locked ? "good" : "warn"}"><span>Finalized analysis</span><strong>${c.locked ? "locked" : "open"}</strong></div><div class="warning-row ${c.signed ? "good" : "warn"}"><span>Electronic signature</span><strong>${c.signed ? "captured" : "needed"}</strong></div><div class="warning-row good"><span>Audit trail</span><strong>${records.length} structured entries</strong></div><div class="warning-row warn"><span>21 CFR Part 11 validation</span><strong>not claimed</strong></div><div class="warning-row warn"><span>Lab SOP/legal review</span><strong>required</strong></div></div></div>
+    <div class="surface-card"><h3>Clinical Mode</h3><p>Clinical mode is off by default and isolated from research workflows. This prototype models regulated-environment controls without claiming validation or legal compliance.</p><div class="button-row"><button class="primary" data-action="enable-clinical">${c.enabled ? "Clinical mode enabled" : "Enable clinical mode"}</button><button class="secondary" data-action="authenticate-clinical">${c.authenticated ? "Authenticated" : "Authenticate"}</button><button class="secondary" data-action="lock-analysis">Lock analysis</button><button class="secondary" data-action="sign-report">E-sign report</button><button class="secondary" data-action="export-compliance">Compliance export</button></div><div class="report-list"><div class="kv-row"><span>User</span><strong>${c.user}</strong></div><div class="kv-row"><span>Role</span><strong>${c.role}</strong></div><div class="kv-row"><span>Authentication</span><strong>${c.authenticated ? "local proof" : "required"}</strong></div><div class="kv-row"><span>Analysis lock</span><strong>${c.locked ? `finalized v${c.version}` : "editable"}</strong></div><div class="kv-row"><span>Signature</span><strong>${signed ? signed.id : "not signed"}</strong></div></div></div>
+    <div class="surface-card"><h3>Configuration</h3><label class="field"><span>User</span><select data-clinical-field="user">${c.users.map(user => `<option value="${user.name}" ${c.user === user.name ? "selected" : ""}>${user.name}</option>`).join("")}</select></label><label class="field"><span>Role</span><select data-clinical-field="role"><option ${c.role === "Research" ? "selected" : ""}>Research</option><option ${c.role === "Operator" ? "selected" : ""}>Operator</option><option ${c.role === "Reviewer" ? "selected" : ""}>Reviewer</option><option ${c.role === "Administrator" ? "selected" : ""}>Administrator</option></select></label><label class="field"><span>Signature reason</span><input value="${c.signatureReason}" data-clinical-field="signatureReason"></label><label class="field"><span>Retention</span><input type="number" min="1" max="25" value="${c.retentionYears}" data-clinical-field="retentionYears"></label><label class="field"><span>Access</span><select data-clinical-field="access"><option ${c.access === "local roles" ? "selected" : ""}>local roles</option><option ${c.access === "directory sync" ? "selected" : ""}>directory sync</option><option ${c.access === "read-only review" ? "selected" : ""}>read-only review</option></select></label></div>
+    <div class="surface-card"><h3>User & Role Registry</h3><div class="report-list">${c.users.map(user => `<div class="kv-row"><span>${user.name}</span><strong>${user.role}</strong></div>`).join("")}</div></div>
+    <div class="surface-card"><h3>Immutable Audit Trail</h3><div class="timeline-list">${records.slice(-10).map((record, index) => `<button><strong>${new Date(record.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</strong><span>${record.user || c.user} · ${pipelineRecordLabel(record)}<em>${pipelineRecordKind(record)} · ${auditRecordHash(record, index)}</em></span></button>`).join("")}</div></div>
+    <div class="surface-card"><h3>Compliance Export Checklist</h3><div class="warnings"><div class="warning-row ${c.enabled ? "good" : "warn"}"><span>Clinical mode</span><strong>${c.enabled ? "enabled" : "off"}</strong></div><div class="warning-row ${c.authenticated ? "good" : "warn"}"><span>Authenticated role</span><strong>${c.authenticated ? c.role : "needed"}</strong></div><div class="warning-row ${c.locked ? "good" : "warn"}"><span>Finalized analysis</span><strong>${c.locked ? `locked v${c.version}` : "open"}</strong></div><div class="warning-row ${c.signed ? "good" : "warn"}"><span>Electronic signature</span><strong>${c.signed ? "captured" : "needed"}</strong></div><div class="warning-row good"><span>Audit trail</span><strong>${records.length} structured entries</strong></div><div class="warning-row warn"><span>21 CFR Part 11 validation</span><strong>not claimed</strong></div><div class="warning-row warn"><span>Lab SOP/legal review</span><strong>required</strong></div></div></div>
   </div></div>`;
 }
 
@@ -1909,20 +1930,30 @@ function drawSurfaceCanvases() {
 
 function addHistory(text, options = {}) {
   initializePipelineRecords();
-  const label = String(text);
+  let label = String(text);
+  const inferredKind = options.kind || inferPipelineKind(label);
+  if (state.clinical?.enabled && state.clinical.locked && !options.allowLocked && !["compliance", "export"].includes(inferredKind)) {
+    state.clinical.version += 1;
+    label = `Version ${state.clinical.version}: ${label}`;
+  }
   const record = {
     id: `evt-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     timestamp: new Date().toISOString(),
-    kind: options.kind || inferPipelineKind(label),
+    kind: inferredKind,
     label,
     sampleId: options.sampleId || state.selectedSample,
     populationId: options.populationId || state.selectedPopulation,
     plotId: options.plotId || state.selectedPlot,
     payload: options.payload || {},
     before: options.before || `Sample ${selectedSample().name}; ${population(state.selectedPopulation).name}`,
-    after: options.after || label
+    after: options.after || label,
+    user: state.clinical?.enabled ? state.clinical.user : "Research User",
+    role: state.clinical?.enabled ? state.clinical.role : "Research",
+    authenticated: state.clinical?.enabled ? state.clinical.authenticated : false,
+    clinicalVersion: state.clinical?.version || 1,
+    immutable: Boolean(state.clinical?.enabled)
   };
-  state.pipeline.push(text);
+  state.pipeline.push(label);
   state.pipelineRecords.push(record);
   if (state.pipeline.length > 32) state.pipeline.splice(17, state.pipeline.length - 32);
   if (state.pipelineRecords.length > 32) state.pipelineRecords.splice(17, state.pipelineRecords.length - 32);
@@ -3391,42 +3422,73 @@ function enableClinicalMode() {
   state.clinical.enabled = true;
   state.clinical.user = "Clinical Reviewer";
   state.clinical.role = state.clinical.role === "Research" ? "Reviewer" : state.clinical.role;
-  addHistory("Enabled optional clinical mode for this installation");
+  addHistory("Enabled optional clinical mode for this installation", { kind: "compliance", allowLocked: true });
   toast("Clinical mode enabled for review");
+  render();
+}
+
+function authenticateClinicalUser() {
+  if (!state.clinical.enabled) enableClinicalMode();
+  const user = state.clinical.users.find(item => item.name === state.clinical.user);
+  if (user) state.clinical.role = user.role === "Research" && state.clinical.role !== "Research" ? state.clinical.role : user.role;
+  state.clinical.authenticated = true;
+  addHistory(`Authenticated ${state.clinical.user} as ${state.clinical.role}`, { kind: "compliance", allowLocked: true, payload: { user: state.clinical.user, role: state.clinical.role } });
+  toast("Clinical role authenticated");
   render();
 }
 
 function lockAnalysis() {
   if (!state.clinical.enabled) enableClinicalMode();
+  if (!state.clinical.authenticated) authenticateClinicalUser();
   state.clinical.locked = true;
-  addHistory("Locked and finalized analysis; future changes require versioning");
+  addHistory("Locked and finalized analysis; future changes require versioning", { kind: "compliance", allowLocked: true, payload: { version: state.clinical.version } });
   toast("Analysis locked");
   render();
 }
 
 function signReport() {
   if (!state.clinical.enabled) enableClinicalMode();
+  if (!state.clinical.authenticated) authenticateClinicalUser();
+  const signature = {
+    id: `SIG-${Date.now().toString(36).toUpperCase()}`,
+    at: new Date().toISOString(),
+    user: state.clinical.user,
+    role: state.clinical.role,
+    reason: state.clinical.signatureReason,
+    lockedVersion: state.clinical.version,
+    auditHash: auditRecordHash(pipelineRecords().at(-1) || { id: "none", label: "none", timestamp: new Date().toISOString() }, pipelineRecords().length)
+  };
+  state.clinical.signatures.push(signature);
   state.clinical.signed = true;
-  addHistory(`Electronic signature captured from ${state.clinical.user} (${state.clinical.role})`);
+  addHistory(`Electronic signature captured from ${state.clinical.user} (${state.clinical.role})`, { kind: "compliance", allowLocked: true, payload: signature });
   toast("Electronic signature captured");
   render();
 }
 
 function exportCompliancePackage() {
+  if (!state.clinical.enabled) enableClinicalMode();
+  const records = pipelineRecords();
+  const immutableTrail = records.map((record, index) => ({ ...record, auditHash: auditRecordHash(record, index) }));
   const payload = {
     mode: "clinical-proof",
     validationClaim: "none",
+    sharedResponsibility: "Software configuration, validation, SOPs, training, and legal compliance remain the lab's responsibility.",
     user: state.clinical.user,
     role: state.clinical.role,
+    authenticated: state.clinical.authenticated,
+    users: state.clinical.users,
     locked: state.clinical.locked,
+    version: state.clinical.version,
     signed: state.clinical.signed,
+    signatures: state.clinical.signatures,
     retentionYears: state.clinical.retentionYears,
+    access: state.clinical.access,
     auditTrail: state.pipeline,
-    structuredAuditTrail: pipelineRecords()
+    structuredAuditTrail: immutableTrail
   };
   downloadText("cytostudio-compliance-export.json", JSON.stringify(payload, null, 2), "application/json");
   state.clinical.exportStatus = "exported";
-  addHistory("Exported compliance-oriented package proof with no validation claim");
+  addHistory("Exported compliance-oriented package proof with no validation claim", { kind: "compliance", allowLocked: true, payload: { records: immutableTrail.length, signatures: state.clinical.signatures.length } });
   render();
 }
 
@@ -3631,7 +3693,8 @@ function bindEvents() {
     const clinicalField = event.target.dataset.clinicalField;
     if (clinicalField) {
       state.clinical[clinicalField] = event.target.type === "number" ? Number(event.target.value) : event.target.value;
-      addHistory(`Updated clinical ${clinicalField} setting`);
+      if (clinicalField === "user" || clinicalField === "role") state.clinical.authenticated = false;
+      addHistory(`Updated clinical ${clinicalField} setting`, { kind: "compliance", allowLocked: true, payload: { field: clinicalField, value: event.target.value } });
       render();
       return;
     }
@@ -3811,6 +3874,7 @@ function bindEvents() {
     if (action === "show-shortcuts") toggleShortcuts();
     if (action === "toggle-contrast") toggleHighContrast();
     if (action === "enable-clinical") enableClinicalMode();
+    if (action === "authenticate-clinical") authenticateClinicalUser();
     if (action === "lock-analysis") lockAnalysis();
     if (action === "sign-report") signReport();
     if (action === "export-compliance") exportCompliancePackage();
