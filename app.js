@@ -12,6 +12,7 @@ const parameters = [
 const colors = ["#31e6d0", "#78d95c", "#a88be8", "#cf67cd", "#ff9b45", "#44b7d0", "#ffd45a", "#e45668"];
 const fcsCore = window.CytoFCS;
 const LARGE_FILE_PREVIEW_BYTES = 512 * 1024 * 1024;
+const FULL_BROWSER_PARSE_BYTES = 64 * 1024 * 1024;
 
 const state = {
   theme: localStorage.getItem("cyto.theme") || "dark",
@@ -1391,9 +1392,17 @@ function renderInspector() {
         <div class="stat-row"><span>Parameters</span><strong>${sample.parameters?.length || parameters.length}</strong></div>
         <div class="stat-row"><span>Keywords</span><strong>${sample.metadata.keywords}</strong></div>
         <div class="stat-row"><span>Import mode</span><strong>${sample.metadata.importMode || "event preview"}</strong></div>
-        <div class="stat-row"><span>Event preview</span><strong>${sample.importReadiness?.hasEventPreview ? fmt(sample.importReadiness.parsedEventCount) : "deferred"}</strong></div>
+        <div class="stat-row"><span>Event data</span><strong>${sample.importReadiness?.hasEventPreview ? `${fmt(sample.importReadiness.parsedEventCount)} / ${fmt(sample.importReadiness.eventCount)}` : "deferred"}</strong></div>
         <div class="stat-row"><span>Large-file readiness</span><strong>${sample.importReadiness?.requiresNativeMappedEngine ? "native engine required" : "browser preview ready"}</strong></div>
         <div class="stat-row"><span>Raw data range</span><strong>${sample.importReadiness ? `${fmt(sample.importReadiness.dataStart)}-${fmt(sample.importReadiness.dataEnd)}` : "demo"}</strong></div>
+      </div>
+    </div>
+    <div class="panel-block"><h3>Parameter List</h3>
+      <div class="pipeline-list">${(sample.parameters || parameters).slice(0, 10).map(parameter => `<div class="pipeline-item"><span>${parameter.label}</span><strong>${parameter.raw || parameter.id}</strong></div>`).join("")}</div>
+    </div>
+    <div class="panel-block"><h3>Scale Validation</h3>
+      <div class="warnings">
+        ${scaleValidationRows(p).map(row => `<div class="warning-row ${row.level}"><span>${row.label}</span><strong>${row.value}</strong></div>`).join("")}
       </div>
     </div>
     <div class="panel-block"><h3>Quality & Warnings</h3>
@@ -1405,6 +1414,24 @@ function renderInspector() {
         <div class="warning-row warn"><span>Illumination stability</span><strong>Slight drift</strong></div>
       </div>
     </div>`;
+}
+
+function scaleValidationRows(plotConfig) {
+  const axes = [
+    { axis: "X", scale: plotConfig.scaleX, parameter: param(plotConfig.x), options: axisTransformOptions(plotConfig, "x") },
+    plotConfig.y ? { axis: "Y", scale: plotConfig.scaleY, parameter: param(plotConfig.y), options: axisTransformOptions(plotConfig, "y") } : null
+  ].filter(Boolean);
+  return axes.map(item => {
+    const range = item.parameter?.range || [0, 1];
+    const handlesNegative = ["logicle", "biexponential", "arcsinh", "linear"].includes(item.scale);
+    const hasNegative = range[0] < 0;
+    const option = item.scale === "arcsinh" ? `cofactor ${item.options.cofactor}` : (item.scale === "log" ? `floor ${item.options.floor}` : (["logicle", "biexponential"].includes(item.scale) ? `width ${item.options.width}` : "direct"));
+    return {
+      label: `${item.axis} ${item.scale}`,
+      value: hasNegative && !handlesNegative ? "negative values floored" : `${option}; ${hasNegative ? "negative-ready" : "range-ready"}`,
+      level: hasNegative && !handlesNegative ? "warn" : "good"
+    };
+  });
 }
 
 function scaleOptions(active) {
@@ -2340,6 +2367,20 @@ function planFCSImport(file) {
       reason: "Full event parsing is deferred to the planned Rust/Arrow memory-mapped engine."
     };
   }
+  if (size <= FULL_BROWSER_PARSE_BYTES) {
+    return {
+      mode: "full-browser-parse",
+      label: "full browser parse",
+      eventAccess: "complete",
+      rawSize: size,
+      maxEvents: undefined,
+      metadataOnly: false,
+      requiresMemoryMap: false,
+      requiresNativeMappedEngine: false,
+      uiWarning: "",
+      reason: "Browser worker parses every event for this local file size."
+    };
+  }
   return {
     mode: "event-preview",
     label: "worker event preview",
@@ -2350,7 +2391,7 @@ function planFCSImport(file) {
     requiresMemoryMap: false,
     requiresNativeMappedEngine: false,
     uiWarning: "",
-    reason: "Browser worker parses a capped local event preview."
+    reason: "Browser worker parses a capped local event preview while preserving raw references for full native-scale loading."
   };
 }
 
