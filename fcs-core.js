@@ -142,6 +142,8 @@
     const datatype = (keywords.$DATATYPE || "F").toUpperCase();
     const littleEndian = resolveByteOrder(keywords);
     const maxEvents = options.maxEvents || total;
+    const progressInterval = Math.max(1, Number(options.progressInterval) || 1000);
+    const onProgress = typeof options.onProgress === "function" ? options.onProgress : null;
     if (mode !== "L") throw new Error(`Unsupported FCS $MODE '${mode}'. Only list mode is supported.`);
     if (!offsets.dataStart || !offsets.dataEnd || total === 0 || parameters.length === 0) return [];
 
@@ -149,6 +151,15 @@
     const events = [];
     let offset = 0;
     const take = Math.min(total, maxEvents);
+    const reportProgress = parsedEvents => {
+      if (!onProgress) return;
+      onProgress({
+        parsedEvents,
+        targetEvents: take,
+        totalEvents: total,
+        percent: take ? Math.round((parsedEvents / take) * 100) : 100
+      });
+    };
     for (let row = 0; row < take; row++) {
       const event = {};
       for (const parameter of parameters) {
@@ -157,6 +168,7 @@
         offset += read.bytes;
       }
       events.push(event);
+      if ((row + 1) % progressInterval === 0 || row + 1 === take) reportProgress(row + 1);
     }
     return events;
   }

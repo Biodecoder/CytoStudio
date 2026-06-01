@@ -18,7 +18,7 @@ Then visit `http://localhost:5178`.
 - Dark/light appearance toggle, Command-K palette, keyboard shortcuts, drag-drop import scaffold, and persisted appearance state.
 - Synthetic cytometry event model with scatter, density, histogram, and UMAP-style plot tiles drawn on canvas.
 - Local FCS 3.0/3.1 parser for standard list-mode numeric files, including header/TEXT parsing, keywords, parameter labels, common integer/float event payloads, spillover, escaped delimiters, max-event limits, big-endian integer fixtures, and tested fixture coverage.
-- Worker-backed FCS import path parses dropped files off the UI thread when served locally, with streamed byte-level progress, cancellation, and direct parser fallback for constrained contexts.
+- Worker-backed FCS import path parses dropped files off the UI thread when served locally, with streamed byte-level progress, event-level parse progress, cancellation, and direct parser fallback for constrained contexts.
 - Experiment browser supports sample grouping by dragging one sample onto another sample's group.
 - Manual gate tool selection, gate creation, gate hierarchy, boolean-gate scaffold, backgating/live-linking messaging, and live statistics.
 - Gate geometry evaluation for rectangle, polygon/lasso, ellipse, quadrant, and histogram interval gates, with recursive parent-to-child population counts based on active sample events.
@@ -53,7 +53,7 @@ The next engineering step is to wrap this surface with Tauri and replace the syn
 
 These areas are represented in the UI and state model but should not be treated as validated scientific or regulatory behavior:
 
-- Complete FCS edge-case coverage, memory mapping, and raw spectral vendor formats.
+- Complete FCS edge-case coverage, memory mapping strategy, public fixture coverage, and raw spectral vendor formats.
 - Reference-validated biexponential/logicle parity with `flowCore` and canonical tick semantics.
 - Million-event GPU/datashader rendering guarantees and optimized incremental gate recomputation.
 - Full drag-and-drop table-builder UX, samples-as-rows pivoting, and native Excel export.

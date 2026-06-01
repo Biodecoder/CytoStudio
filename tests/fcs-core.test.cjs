@@ -147,6 +147,38 @@ const limited = parseFCS(buildFixture(), { maxEvents: 2 });
 assert.equal(limited.parsedEventCount, 2);
 assert.equal(limited.events.length, 2);
 
+const progressEvents = [];
+const progressed = parseFCS(buildFixture(), {
+  progressInterval: 1,
+  onProgress(progress) {
+    progressEvents.push(progress);
+  }
+});
+assert.equal(progressed.parsedEventCount, 3);
+assert.equal(progressEvents.length, 3);
+assert.deepEqual(progressEvents.at(-1), {
+  parsedEvents: 3,
+  targetEvents: 3,
+  totalEvents: 3,
+  percent: 100
+});
+
+const cappedProgressEvents = [];
+const cappedProgress = parseFCS(buildFixture(), {
+  maxEvents: 2,
+  progressInterval: 1,
+  onProgress(progress) {
+    cappedProgressEvents.push(progress);
+  }
+});
+assert.equal(cappedProgress.parsedEventCount, 2);
+assert.deepEqual(cappedProgressEvents.at(-1), {
+  parsedEvents: 2,
+  targetEvents: 2,
+  totalEvents: 3,
+  percent: 100
+});
+
 const integerParsed = parseFCS(buildIntegerByteOrderFixture());
 assert.equal(integerParsed.metadata.instrument, "Integer Fixture");
 assert.equal(integerParsed.parameters[0].bits, 8);
