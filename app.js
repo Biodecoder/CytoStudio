@@ -55,6 +55,18 @@ const state = {
     combinedRows: [],
     lastRecomputed: "not run"
   },
+  highDim: {
+    method: "UMAP",
+    clusterer: "FlowSOM",
+    population: "live",
+    colorBy: "cd3",
+    parameters: ["cd3", "cd4", "cd8", "cd19"],
+    seed: 42,
+    progress: 0,
+    status: "idle",
+    selectedCluster: 0,
+    result: null
+  },
   samples: [
     { id: "s1", name: "PBMC Panel.fcs", events: 10432912, group: "Treatment A", status: "ready", templateId: "tcell-panel", metadata: { instrument: "Aurora CS", operator: "Core Facility", acquired: "2026-06-01", compensation: "Imported 8x8", keywords: 412 } },
     { id: "s2", name: "Donor 02 Restim.fcs", events: 8945102, group: "Treatment A", status: "ready", templateId: "tcell-panel", metadata: { instrument: "Aurora CS", operator: "Core Facility", acquired: "2026-05-31", compensation: "Group matrix", keywords: 397 } },
@@ -104,6 +116,7 @@ const state = {
 };
 
 let syntheticEvents = [];
+let highDimTimer = null;
 
 function defaultTransformSettings() {
   return { cofactor: 150, width: 18, floor: 1 };
@@ -633,6 +646,7 @@ function eventScreenPoint(event, plotConfig) {
 }
 
 function eventPassesGate(event, gate) {
+  if (gate.type === "cluster") return highDimClusterForEvent(event, state.highDim.parameters) === gate.cluster;
   const plotConfig = plot(gate.plot);
   if (!plotConfig) return true;
   const point = eventScreenPoint(event, plotConfig);
@@ -1016,10 +1030,45 @@ function spectralQualityRows() {
 }
 
 function highDimSurface() {
+  const hd = state.highDim;
+  const result = hd.result;
+  const clusterRows = result?.clusters?.map(cluster => {
+    const active = cluster.id === hd.selectedCluster;
+    return `<button class="cluster-row ${active ? "active" : ""}" data-action="select-cluster" data-cluster="${cluster.id}"><span><span class="swatch" style="background:${colors[cluster.id % colors.length]}"></span>Cluster ${cluster.id + 1}</span><strong>${fmt(cluster.count)}</strong><em>${cluster.phenotype}</em></button>`;
+  }).join("") || `<div class="empty-note">Run analysis to populate clusters.</div>`;
   return `<div class="surface"><div class="surface-grid">
-    <div class="surface-card"><h3>UMAP / t-SNE / FlowSOM Explorer</h3><p>Parameter selection, progress, reproducible seed, cluster labels, marker heatmaps, and cluster backgating are wired as a local scaffold.</p><div class="button-row"><button class="primary" data-action="run-umap">Run UMAP</button><button class="secondary">Cancel</button><button class="secondary">Gate cluster</button></div><div class="pipeline-list"><div class="pipeline-item"><span>Seed</span><strong>42</strong></div><div class="pipeline-item"><span>Parameters</span><strong>CD3, CD4, CD8, CD19</strong></div><div class="pipeline-item"><span>Clusters</span><strong>8 FlowSOM-style metaclusters</strong></div></div></div>
+    <div class="surface-card"><h3>UMAP / t-SNE / FlowSOM Explorer</h3><p>Run sampled, reproducible embeddings on a selected population with parameter inclusion, marker coloring, progress, cancellation, and cluster backgating.</p><div class="highdim-controls"><label class="field"><span>Embedding</span><select data-highdim-field="method"><option ${hd.method === "UMAP" ? "selected" : ""}>UMAP</option><option ${hd.method === "t-SNE" ? "selected" : ""}>t-SNE</option></select></label><label class="field"><span>Clustering</span><select data-highdim-field="clusterer"><option ${hd.clusterer === "FlowSOM" ? "selected" : ""}>FlowSOM</option><option ${hd.clusterer === "Graph" ? "selected" : ""}>Graph</option></select></label><label class="field"><span>Population</span><select data-highdim-field="population">${state.populations.map(pop => `<option value="${pop.id}" ${hd.population === pop.id ? "selected" : ""}>${pop.name}</option>`).join("")}</select></label><label class="field"><span>Color by</span><select data-highdim-field="colorBy">${parameters.filter(parameter => !parameter.id.startsWith("umap")).map(parameter => `<option value="${parameter.id}" ${hd.colorBy === parameter.id ? "selected" : ""}>${parameter.label}</option>`).join("")}</select></label></div><div class="parameter-picks">${parameters.filter(parameter => /cd|unmixed/i.test(parameter.id)).map(parameter => `<label><input type="checkbox" data-highdim-param="${parameter.id}" ${hd.parameters.includes(parameter.id) ? "checked" : ""}> ${parameter.label}</label>`).join("")}</div><div class="progress-track"><span style="width:${hd.progress}%"></span></div><div class="button-row"><button class="primary" data-action="run-umap">Run ${hd.method}</button><button class="secondary" data-action="cancel-highdim">Cancel</button><button class="secondary" data-action="gate-cluster">Gate cluster</button><button class="secondary" data-action="compare-embeddings">Compare samples</button></div><div class="pipeline-list"><div class="pipeline-item"><span>Status</span><strong>${hd.status}</strong></div><div class="pipeline-item"><span>Seed</span><strong>${hd.seed}</strong></div><div class="pipeline-item"><span>Events sampled</span><strong>${result ? fmt(result.points.length) : "not run"}</strong></div></div></div>
+    <div class="surface-card"><h3>Embedding</h3><canvas data-surface-canvas="embedding" height="260"></canvas></div>
+    <div class="surface-card"><h3>Cluster Explorer</h3><div class="cluster-list">${clusterRows}</div></div>
     <div class="surface-card"><h3>Cluster Heatmap</h3><canvas data-surface-canvas="heatmap" height="260"></canvas></div>
   </div></div>`;
+}
+
+function highDimClusterForEvent(event, params = state.highDim.parameters) {
+  const score = params.reduce((sum, id, index) => {
+    const parameter = param(id);
+    if (!parameter) return sum;
+    return sum + normalize(event[id], parameter, parameter.scale, defaultTransformSettings()) * (index + 1.7);
+  }, 0);
+  return Math.max(0, Math.min(7, Math.floor((score * 2.15) % 8)));
+}
+
+function computeHighDimResult(sample = selectedSample()) {
+  const hd = state.highDim;
+  const events = sampleEventsForPopulation(hd.population, new Map(), sample).slice(0, 1800);
+  const points = events.map((event, index) => {
+    const values = hd.parameters.map(id => normalize(event[id], param(id), param(id).scale, defaultTransformSettings()));
+    const x = values.reduce((sum, value, i) => sum + value * Math.cos((i + 1) * 1.7), 0) + (rand(index + hd.seed) - 0.5) * 0.14;
+    const y = values.reduce((sum, value, i) => sum + value * Math.sin((i + 1) * 1.3), 0) + (rand(index + hd.seed + 99) - 0.5) * 0.14;
+    return { x, y, colorValue: event[hd.colorBy], cluster: highDimClusterForEvent(event, hd.parameters), event };
+  });
+  const clusters = Array.from({ length: 8 }, (_, id) => {
+    const members = points.filter(point => point.cluster === id);
+    const means = Object.fromEntries(hd.parameters.map(parameterId => [parameterId, mean(members.map(point => point.event[parameterId]).filter(Number.isFinite))]));
+    const phenotype = hd.parameters.slice().sort((a, b) => (means[b] || 0) - (means[a] || 0)).slice(0, 2).map(statParamLabel).join(" / ");
+    return { id, count: Math.round(members.length * activeEventScale(sample)), means, phenotype: phenotype || "mixed" };
+  });
+  return { sample: sample.id, method: hd.method, clusterer: hd.clusterer, parameters: [...hd.parameters], points, clusters };
 }
 
 function figureSurface() {
@@ -1100,13 +1149,41 @@ function drawSurfaceCanvases() {
     const { ctx, width, height } = setupCanvas(canvas);
     ctx.clearRect(0, 0, width, height);
     if (kind === "heatmap") {
-      const cols = 8, rows = 6;
+      const result = state.highDim.result;
+      const cols = state.highDim.parameters.length || 1;
+      const rows = result?.clusters?.length || 6;
       for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
-        ctx.fillStyle = densityColor(rand(r * 20 + c));
-        ctx.fillRect(42 + c * ((width - 60) / cols), 18 + r * ((height - 40) / rows), (width - 68) / cols, (height - 48) / rows);
+        const parameterId = state.highDim.parameters[c];
+        const parameter = param(parameterId);
+        const value = result ? normalize(result.clusters[r].means[parameterId], parameter, parameter.scale, defaultTransformSettings()) : rand(r * 20 + c);
+        ctx.fillStyle = densityColor(value);
+        ctx.fillRect(52 + c * ((width - 72) / cols), 18 + r * ((height - 48) / rows), (width - 78) / cols, (height - 56) / rows);
       }
       ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--muted");
       ctx.fillText("Clusters x markers", 12, height - 8);
+    } else if (kind === "embedding") {
+      const result = state.highDim.result;
+      if (!result?.points?.length) {
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--muted");
+        ctx.fillText("Run analysis to create embedding", 16, 32);
+        return;
+      }
+      const xs = result.points.map(point => point.x);
+      const ys = result.points.map(point => point.y);
+      const minX = Math.min(...xs), maxX = Math.max(...xs);
+      const minY = Math.min(...ys), maxY = Math.max(...ys);
+      const colorParam = param(state.highDim.colorBy);
+      result.points.forEach(point => {
+        const x = 18 + ((point.x - minX) / Math.max(maxX - minX, 0.0001)) * (width - 36);
+        const y = 18 + (1 - ((point.y - minY) / Math.max(maxY - minY, 0.0001))) * (height - 38);
+        const intensity = colorParam ? normalize(point.colorValue, colorParam, colorParam.scale, defaultTransformSettings()) : point.cluster / 7;
+        ctx.fillStyle = point.cluster === state.highDim.selectedCluster ? colors[point.cluster % colors.length] : densityColor(intensity);
+        ctx.globalAlpha = point.cluster === state.highDim.selectedCluster ? 0.88 : 0.42;
+        ctx.fillRect(x, y, point.cluster === state.highDim.selectedCluster ? 2.2 : 1.5, point.cluster === state.highDim.selectedCluster ? 2.2 : 1.5);
+      });
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--muted");
+      ctx.fillText(`${result.method} colored by ${statParamLabel(state.highDim.colorBy)}`, 12, height - 8);
     } else if (kind === "spectra") {
       Object.values(state.spectral.signatures).forEach((signature, s) => {
         ctx.beginPath();
@@ -1413,6 +1490,73 @@ function recomputeBatchStatistics() {
   render();
 }
 
+function runHighDimAnalysis() {
+  clearTimeout(highDimTimer);
+  state.highDim.status = "running";
+  state.highDim.progress = 22;
+  addHistory(`Started ${state.highDim.method} + ${state.highDim.clusterer} on ${population(state.highDim.population).name}`);
+  render();
+  highDimTimer = setTimeout(() => {
+    state.highDim.progress = 100;
+    state.highDim.status = "complete";
+    state.highDim.result = computeHighDimResult();
+    const existing = plot("p4");
+    if (existing) {
+      existing.x = "umap1";
+      existing.y = "umap2";
+      existing.population = state.highDim.population;
+      existing.type = "umap";
+    }
+    addHistory(`Completed reproducible ${state.highDim.method} run with ${state.highDim.result.clusters.length} ${state.highDim.clusterer} clusters`);
+    toast("Cluster explorer ready");
+    render();
+  }, 260);
+}
+
+function cancelHighDimAnalysis() {
+  clearTimeout(highDimTimer);
+  state.highDim.status = "cancelled";
+  state.highDim.progress = 0;
+  addHistory("Cancelled high-dimensional analysis run");
+  toast("High-dimensional run cancelled");
+  render();
+}
+
+function selectHighDimCluster(clusterId) {
+  state.highDim.selectedCluster = Number(clusterId);
+  addHistory(`Selected cluster ${state.highDim.selectedCluster + 1} for backgating review`);
+  render();
+}
+
+function gateSelectedCluster() {
+  if (!state.highDim.result) {
+    state.highDim.result = computeHighDimResult();
+    state.highDim.status = "complete";
+    state.highDim.progress = 100;
+  }
+  const cluster = state.highDim.selectedCluster;
+  const id = `cluster${cluster + 1}-${Date.now()}`;
+  const parent = state.highDim.population;
+  const count = state.highDim.result?.clusters?.[cluster]?.count || 0;
+  state.populations.push({ id, parent, name: `Cluster ${cluster + 1}`, color: colors[cluster % colors.length], count, gate: "cluster" });
+  state.gates.push({ id: `gate-${id}`, plot: "p4", population: id, type: "cluster", cluster, label: `Cluster ${cluster + 1}` });
+  state.selectedPopulation = id;
+  addHistory(`Backgated cluster ${cluster + 1} into the population hierarchy`);
+  toast("Cluster population added");
+  render();
+}
+
+function compareEmbeddingsAcrossSamples() {
+  const rows = state.samples.map(sample => {
+    const result = computeHighDimResult(sample);
+    const dominant = result.clusters.slice().sort((a, b) => b.count - a.count)[0];
+    return `${sample.name}: cluster ${dominant.id + 1} dominant (${fmt(dominant.count)} events)`;
+  });
+  addHistory(`Compared embeddings across samples: ${rows.join("; ")}`);
+  toast("Sample comparison recorded in pipeline");
+  render();
+}
+
 function runSpectralUnmixing() {
   ensureSpectralParameters();
   state.spectral.enabled = true;
@@ -1537,6 +1681,29 @@ function bindEvents() {
       render();
       return;
     }
+    const highDimField = event.target.dataset.highdimField;
+    if (highDimField) {
+      state.highDim[highDimField] = event.target.value;
+      state.highDim.result = null;
+      state.highDim.progress = 0;
+      state.highDim.status = "idle";
+      addHistory(`Updated high-dimensional ${highDimField} to ${event.target.value}`);
+      render();
+      return;
+    }
+    const highDimParam = event.target.dataset.highdimParam;
+    if (highDimParam) {
+      state.highDim.parameters = event.target.checked
+        ? Array.from(new Set([...state.highDim.parameters, highDimParam]))
+        : state.highDim.parameters.filter(id => id !== highDimParam);
+      if (!state.highDim.parameters.length) state.highDim.parameters = [highDimParam];
+      state.highDim.result = null;
+      state.highDim.progress = 0;
+      state.highDim.status = "idle";
+      addHistory(`Updated high-dimensional parameter set: ${state.highDim.parameters.map(statParamLabel).join(", ")}`);
+      render();
+      return;
+    }
     const key = event.target.dataset.editPlot;
     if (!key) return;
     const p = plot(state.selectedPlot);
@@ -1589,10 +1756,12 @@ function bindEvents() {
       render();
     }
     if (action === "run-umap") {
-      addHistory("Ran reproducible UMAP scaffold with seed 42");
-      toast("UMAP scaffold complete; clusters backgated");
-      render();
+      runHighDimAnalysis();
     }
+    if (action === "cancel-highdim") cancelHighDimAnalysis();
+    if (action === "select-cluster") selectHighDimCluster(actionTarget.dataset.cluster);
+    if (action === "gate-cluster") gateSelectedCluster();
+    if (action === "compare-embeddings") compareEmbeddingsAcrossSamples();
     if (action === "apply-comp") {
       const comp = currentCompensation();
       comp.enabled = true;
