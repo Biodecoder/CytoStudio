@@ -11,6 +11,7 @@ const parameters = [
 
 const colors = ["#31e6d0", "#78d95c", "#a88be8", "#cf67cd", "#ff9b45", "#44b7d0", "#ffd45a", "#e45668"];
 const fcsCore = window.CytoFCS;
+const LARGE_FILE_PREVIEW_BYTES = 512 * 1024 * 1024;
 
 const state = {
   theme: localStorage.getItem("cyto.theme") || "dark",
@@ -32,6 +33,7 @@ const state = {
     parsedEvents: 0,
     targetEvents: 0,
     parsePercent: 0,
+    strategy: "",
     completed: 0,
     total: 0
   },
@@ -284,7 +286,7 @@ function plot(id) {
 }
 
 function activeEvents(sample = selectedSample()) {
-  const baseEvents = sample?.parsedEvents?.length ? sample.parsedEvents : syntheticEvents;
+  const baseEvents = sample?.parsedEvents?.length ? sample.parsedEvents : (sample?.parsed ? [] : syntheticEvents);
   return unmixedEvents(compensatedEvents(baseEvents, sample), sample);
 }
 
@@ -431,7 +433,9 @@ function renderImportDropZone() {
   if (job.active) {
     const bytes = job.fileBytesTotal ? ` · ${formatBytes(job.fileBytesLoaded)} / ${formatBytes(job.fileBytesTotal)}` : "";
     const events = job.targetEvents ? ` · ${fmt(job.parsedEvents)} / ${fmt(job.targetEvents)} events` : "";
-    dropZone.innerHTML = `<strong>Importing ${job.currentFile || "FCS files"}</strong><span>${job.completed} of ${job.total} files parsed · ${job.phase}${bytes}${events}. Worker import is active and can be cancelled.</span><div class="progress-track"><span style="width:${state.importProgress}%"></span></div><button class="secondary" data-action="cancel-import">Cancel import</button>`;
+    const strategy = job.strategy ? ` · ${job.strategy}` : "";
+    const affordance = job.strategy === "metadata-only preflight" ? "Event data is deferred to the native memory-mapped engine." : "Worker event preview is active and can be cancelled.";
+    dropZone.innerHTML = `<strong>Importing ${job.currentFile || "FCS files"}</strong><span>${job.completed} of ${job.total} files parsed · ${job.phase}${bytes}${events}${strategy}. ${affordance}</span><div class="progress-track"><span style="width:${state.importProgress}%"></span></div><button class="secondary" data-action="cancel-import">Cancel import</button>`;
     return;
   }
   dropZone.innerHTML = `<strong>Drop FCS files or folders</strong><span>FCS 3.0 / 3.1 files are parsed locally for metadata, parameters, and common numeric event data.</span>`;
@@ -451,7 +455,7 @@ function renderSamples() {
     const row = document.createElement("button");
     row.className = `row ${sample.id === state.selectedSample ? "active" : ""}`;
     row.draggable = true;
-    const parsedBadge = sample.parsed ? " · parsed FCS" : "";
+    const parsedBadge = sample.metadataOnly ? " · metadata only" : (sample.parsed ? " · event preview" : " · demo");
     const templateBadge = sampleTemplateLabel(sample);
     row.innerHTML = `<span class="dot" style="background:${colors[idx % colors.length]}"></span><span>${sample.name}<br><small>${sample.group} · ${sample.metadata.instrument}${parsedBadge}</small></span><span class="count">${fmt(sample.events)}${templateBadge ? `<br><em class="${templateBadge.className}">${templateBadge.label}</em>` : ""}</span>`;
     row.addEventListener("click", () => {
@@ -992,11 +996,16 @@ function renderInspector() {
         <div class="stat-row"><span>Acquired</span><strong>${sample.metadata.acquired}</strong></div>
         <div class="stat-row"><span>Parameters</span><strong>${sample.parameters?.length || parameters.length}</strong></div>
         <div class="stat-row"><span>Keywords</span><strong>${sample.metadata.keywords}</strong></div>
+        <div class="stat-row"><span>Import mode</span><strong>${sample.metadata.importMode || "event preview"}</strong></div>
+        <div class="stat-row"><span>Event preview</span><strong>${sample.importReadiness?.hasEventPreview ? fmt(sample.importReadiness.parsedEventCount) : "deferred"}</strong></div>
+        <div class="stat-row"><span>Large-file readiness</span><strong>${sample.importReadiness?.requiresNativeMappedEngine ? "native engine required" : "browser preview ready"}</strong></div>
+        <div class="stat-row"><span>Raw data range</span><strong>${sample.importReadiness ? `${fmt(sample.importReadiness.dataStart)}-${fmt(sample.importReadiness.dataEnd)}` : "demo"}</strong></div>
       </div>
     </div>
     <div class="panel-block"><h3>Quality & Warnings</h3>
       <div class="warnings">
         <div class="warning-row good"><span>Compensation</span><strong>Calculated</strong></div>
+        ${sample.importReadiness?.requiresNativeMappedEngine ? `<div class="warning-row warn"><span>Event payload</span><strong>deferred</strong></div>` : ""}
         <div class="warning-row warn"><span>Unmixed samples</span><strong>1 warning</strong></div>
         <div class="warning-row good"><span>Signal quality</span><strong>Good</strong></div>
         <div class="warning-row warn"><span>Illumination stability</span><strong>Slight drift</strong></div>
@@ -1433,31 +1442,33 @@ async function importFiles(files) {
     return;
   }
 
-  state.importJob = { active: true, cancelled: false, currentFile: "", phase: "queued", fileBytesLoaded: 0, fileBytesTotal: 0, parsedEvents: 0, targetEvents: 0, parsePercent: 0, completed: 0, total: fileList.length };
+  state.importJob = { active: true, cancelled: false, currentFile: "", phase: "queued", fileBytesLoaded: 0, fileBytesTotal: 0, parsedEvents: 0, targetEvents: 0, parsePercent: 0, strategy: "", completed: 0, total: fileList.length };
   state.importProgress = 0;
   renderImportDropZone();
   const imported = [];
   for (let index = 0; index < fileList.length; index++) {
     if (state.importJob.cancelled) break;
     const file = fileList[index];
+    const importPlan = planFCSImport(file);
     state.importProgress = Math.round((index / fileList.length) * 100);
     state.importJob.currentFile = file.name || "FCS file";
     state.importJob.completed = index;
-    state.importJob.phase = "reading";
+    state.importJob.phase = importPlan.metadataOnly ? "reading metadata" : "reading";
     state.importJob.fileBytesLoaded = 0;
     state.importJob.fileBytesTotal = file.size || 0;
     state.importJob.parsedEvents = 0;
     state.importJob.targetEvents = 0;
     state.importJob.parsePercent = 0;
+    state.importJob.strategy = importPlan.label;
     renderImportDropZone();
     toast(`Importing ${file.name || "FCS file"} ${state.importProgress}%`);
     try {
-      const parsed = await parseFCSFile(file, { maxEvents: 25000 });
+      const parsed = importPlan.metadataOnly ? await parseFCSMetadataOnly(file) : await parseFCSFile(file, { maxEvents: importPlan.maxEvents });
       if (state.importJob.cancelled) break;
-      imported.push(sampleFromParsedFCS(file.name, parsed));
+      imported.push(sampleFromParsedFCS(file.name, parsed, importPlan));
     } catch (error) {
       if (state.importJob.cancelled || /cancelled/i.test(error.message)) break;
-      imported.push(fallbackSample(file.name, error));
+      imported.push(fallbackSample(file.name, error, importPlan));
     }
   }
 
@@ -1465,14 +1476,46 @@ async function importFiles(files) {
   state.importJob.completed = imported.length;
   state.importJob.active = false;
   imported.forEach(sample => state.samples.push(sample));
-  const firstParsed = imported.find(sample => sample.parsed && sample.parameters?.length);
-  if (firstParsed) {
-    state.selectedSample = firstParsed.id;
-    adoptImportedParameters(firstParsed);
+  const firstImported = imported.find(sample => sample.parsed && sample.parameters?.length);
+  const firstEventPreview = imported.find(sample => sample.parsed && !sample.metadataOnly && sample.parameters?.length);
+  const hasMetadataOnly = imported.some(sample => sample.metadataOnly);
+  if (firstImported) {
+    state.selectedSample = firstImported.id;
+    adoptImportedParameters(firstImported);
   }
-  addHistory(state.importJob.cancelled ? `Cancelled FCS import after ${imported.length} file(s)` : `Imported ${imported.length} FCS file(s) through worker-backed parser`);
-  toast(state.importJob.cancelled ? "FCS import cancelled" : (firstParsed ? "FCS import complete with parsed events" : "Import finished with metadata fallback"));
+  addHistory(state.importJob.cancelled ? `Cancelled FCS import after ${imported.length} file(s)` : (hasMetadataOnly ? `Imported ${imported.length} FCS file(s) with metadata preflight` : `Imported ${imported.length} FCS file(s) through worker-backed parser`));
+  toast(state.importJob.cancelled ? "FCS import cancelled" : (firstEventPreview ? "FCS import complete with parsed events" : (firstImported ? "FCS metadata preflight complete" : "Import finished with metadata fallback")));
   render();
+}
+
+function planFCSImport(file) {
+  const size = file.size || 0;
+  if (size >= LARGE_FILE_PREVIEW_BYTES) {
+    return {
+      mode: "metadata-only",
+      label: "metadata-only preflight",
+      eventAccess: "deferred",
+      rawSize: size,
+      maxEvents: 0,
+      metadataOnly: true,
+      requiresMemoryMap: true,
+      requiresNativeMappedEngine: true,
+      uiWarning: "Event data is deferred until the native memory-mapped engine is available.",
+      reason: "Full event parsing is deferred to the planned Rust/Arrow memory-mapped engine."
+    };
+  }
+  return {
+    mode: "event-preview",
+    label: "worker event preview",
+    eventAccess: "preview",
+    rawSize: size,
+    maxEvents: 25000,
+    metadataOnly: false,
+    requiresMemoryMap: false,
+    requiresNativeMappedEngine: false,
+    uiWarning: "",
+    reason: "Browser worker parses a capped local event preview."
+  };
 }
 
 function parseFCSFile(file, options) {
@@ -1519,6 +1562,25 @@ function parseFCSFile(file, options) {
     renderImportDropZone();
     worker.postMessage({ id, name: file.name, buffer, maxEvents: options.maxEvents }, [buffer]);
   });
+}
+
+async function parseFCSMetadataOnly(file) {
+  if (state.importJob.cancelled) throw new Error("Import cancelled");
+  state.importJob.phase = "reading header";
+  renderImportDropZone();
+  const headerBuffer = await file.slice(0, 256).arrayBuffer();
+  const header = fcsCore.parseHeader(headerBuffer);
+  const textEnd = Math.max(header.textEnd + 1, 256);
+  state.importJob.fileBytesLoaded = Math.min(textEnd, file.size || textEnd);
+  state.importJob.phase = "reading TEXT metadata";
+  state.importProgress = importProgressPercent();
+  renderImportDropZone();
+  const metadataBuffer = await file.slice(0, textEnd).arrayBuffer();
+  state.importJob.fileBytesLoaded = Math.min(textEnd, file.size || textEnd);
+  state.importJob.phase = "metadata ready";
+  state.importProgress = importProgressPercent();
+  renderImportDropZone();
+  return fcsCore.parseFCSMetadata(metadataBuffer);
 }
 
 function parseFCSBufferWithProgress(buffer, options) {
@@ -1587,7 +1649,7 @@ function cancelImport() {
   render();
 }
 
-function fallbackSample(name, error) {
+function fallbackSample(name, error, importPlan = planFCSImport({ size: 0 })) {
   return {
     id: `s${Date.now()}${Math.floor(Math.random() * 1000)}`,
     name,
@@ -1601,12 +1663,23 @@ function fallbackSample(name, error) {
       operator: error.message,
       acquired: "Unknown",
       compensation: "",
-      keywords: 0
+      keywords: 0,
+      importMode: importPlan.label
+    },
+    importReadiness: {
+      mode: importPlan.mode,
+      rawSize: importPlan.rawSize,
+      eventCount: 0,
+      parsedEventCount: 0,
+      hasEventPreview: false,
+      requiresNativeMappedEngine: importPlan.requiresNativeMappedEngine,
+      dataStart: 0,
+      dataEnd: 0
     }
   };
 }
 
-function sampleFromParsedFCS(name, parsed) {
+function sampleFromParsedFCS(name, parsed, importPlan = planFCSImport({ size: 0 })) {
   const sample = {
     id: `s${Date.now()}${Math.floor(Math.random() * 1000)}`,
     name,
@@ -1614,6 +1687,19 @@ function sampleFromParsedFCS(name, parsed) {
     group: "Imported FCS",
     status: "ready",
     parsed: true,
+    metadataOnly: importPlan.metadataOnly,
+    importReadiness: {
+      mode: importPlan.mode,
+      rawSize: importPlan.rawSize,
+      eventCount: parsed.eventCount,
+      parsedEventCount: parsed.parsedEventCount,
+      hasEventPreview: parsed.events.length > 0,
+      requiresNativeMappedEngine: importPlan.requiresNativeMappedEngine,
+      dataStart: parsed.offsets?.dataStart || 0,
+      dataEnd: parsed.offsets?.dataEnd || 0,
+      dataBytes: parsed.dataBytes || Math.max(0, (parsed.offsets?.dataEnd || 0) - (parsed.offsets?.dataStart || 0) + 1),
+      bytesPerEvent: parsed.bytesPerEvent || 0
+    },
     parameters: parsed.parameters.map(parameter => ({
       id: parameter.id,
       label: parameter.label,
@@ -1636,9 +1722,15 @@ function sampleFromParsedFCS(name, parsed) {
       operator: parsed.metadata.operator,
       acquired: parsed.metadata.acquired,
       compensation: parsed.spillover ? `Embedded ${parsed.spillover.sourceKeyword} parsed` : "No embedded matrix",
-      keywords: parsed.metadata.keywordCount
+      keywords: parsed.metadata.keywordCount,
+      importMode: importPlan.label,
+      importNote: importPlan.reason
     }
   };
+  if (importPlan.requiresMemoryMap) {
+    sample.status = "preview";
+    sample.metadata.compensation = parsed.spillover ? `Embedded ${parsed.spillover.sourceKeyword} detected` : "Deferred until event parse";
+  }
   return sample;
 }
 

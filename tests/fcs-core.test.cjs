@@ -1,5 +1,5 @@
 const assert = require("node:assert/strict");
-const { parseFCS, parseTextSegment, transforms } = require("../fcs-core.js");
+const { parseFCS, parseFCSMetadata, parseHeader, parseTextSegment, transforms } = require("../fcs-core.js");
 
 function pad(value, width) {
   return String(value).padStart(width, " ");
@@ -143,9 +143,28 @@ assert.equal(parsed.spillover.matrix.cd3_apc.side_scatter, 0.12);
 assert.equal(parsed.events[0].forward_scatter, 100);
 assert.equal(parsed.events[2].cd3_apc, 125);
 
+const metadataOnly = parseFCSMetadata(buildFixture());
+assert.equal(metadataOnly.version, "FCS3.1");
+assert.equal(metadataOnly.eventCount, 3);
+assert.equal(metadataOnly.parsedEventCount, 0);
+assert.equal(metadataOnly.dataBytes, 36);
+assert.equal(metadataOnly.bytesPerEvent, 12);
+assert.equal(metadataOnly.events.length, 0);
+assert.equal(metadataOnly.parameters[0].label, "Forward Scatter (FSC-A)");
+assert.equal(metadataOnly.metadata.instrument, "CytoStudio Test Cytometer");
+const fixtureForSlice = buildFixture();
+const sliceHeader = parseHeader(fixtureForSlice);
+const metadataSlice = parseFCSMetadata(fixtureForSlice.slice(0, sliceHeader.textEnd + 1));
+assert.equal(metadataSlice.eventCount, 3);
+assert.equal(metadataSlice.spillover.sourceKeyword, "$SPILLOVER");
+
 const limited = parseFCS(buildFixture(), { maxEvents: 2 });
 assert.equal(limited.parsedEventCount, 2);
 assert.equal(limited.events.length, 2);
+
+const metadataStyleLimit = parseFCS(buildFixture(), { maxEvents: 0 });
+assert.equal(metadataStyleLimit.parsedEventCount, 0);
+assert.equal(metadataStyleLimit.events.length, 0);
 
 const progressEvents = [];
 const progressed = parseFCS(buildFixture(), {

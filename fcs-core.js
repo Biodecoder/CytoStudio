@@ -141,7 +141,8 @@
     const mode = (keywords.$MODE || "L").toUpperCase();
     const datatype = (keywords.$DATATYPE || "F").toUpperCase();
     const littleEndian = resolveByteOrder(keywords);
-    const maxEvents = options.maxEvents || total;
+    const requestedMax = options.maxEvents;
+    const maxEvents = Number.isFinite(Number(requestedMax)) ? Math.max(0, Number(requestedMax)) : total;
     const progressInterval = Math.max(1, Number(options.progressInterval) || 1000);
     const onProgress = typeof options.onProgress === "function" ? options.onProgress : null;
     if (mode !== "L") throw new Error(`Unsupported FCS $MODE '${mode}'. Only list mode is supported.`);
@@ -205,6 +206,44 @@
     };
   }
 
+  function parseFCSMetadata(input) {
+    const buffer = input instanceof ArrayBuffer ? input : input.buffer.slice(input.byteOffset, input.byteOffset + input.byteLength);
+    const header = parseHeader(buffer);
+    if (!/^FCS3\.[01]/.test(header.version)) {
+      throw new Error(`Unsupported or missing FCS version '${header.version}'. Expected FCS3.0 or FCS3.1.`);
+    }
+    if (buffer.byteLength <= header.textEnd) {
+      throw new Error("FCS metadata slice does not include the complete TEXT segment.");
+    }
+    const textSegment = ASCII.decode(new Uint8Array(buffer, header.textStart, header.textEnd - header.textStart + 1));
+    const keywords = parseTextSegment(textSegment);
+    const offsets = getOffsets(header, keywords);
+    const parameters = getParameters(keywords);
+    const spillover = parseSpilloverMatrix(keywords, parameters);
+    const dataBytes = offsets.dataEnd >= offsets.dataStart ? offsets.dataEnd - offsets.dataStart + 1 : 0;
+    const bytesPerEvent = parameters.reduce((sum, parameter) => sum + Math.ceil(parameter.bits / 8), 0);
+    return {
+      version: header.version,
+      header,
+      offsets,
+      keywords,
+      parameters,
+      eventCount: keywordNumber(keywords, "$TOT"),
+      parsedEventCount: 0,
+      dataBytes,
+      bytesPerEvent,
+      events: [],
+      spillover,
+      metadata: {
+        instrument: keywords.$CYT || keywords.CYT || "Unknown instrument",
+        operator: keywords.$OP || keywords.OP || "Unknown operator",
+        acquired: keywords.$DATE || keywords.DATE || "Unknown acquisition date",
+        compensation: spillover ? spillover.sourceKeyword : "",
+        keywordCount: Object.keys(keywords).length
+      }
+    };
+  }
+
   const transforms = {
     linear(value) {
       return value;
@@ -231,5 +270,5 @@
     }
   };
 
-  return { parseFCS, parseHeader, parseTextSegment, parseSpilloverMatrix, transforms };
+  return { parseFCS, parseFCSMetadata, parseHeader, parseTextSegment, parseSpilloverMatrix, transforms };
 });
