@@ -24,6 +24,7 @@ Then visit `http://localhost:5178`.
 - Histograms now bin active event data through the selected axis transform instead of drawing fixed placeholder curves.
 - Statistics table, CSV export, compensation matrix, spillover QC grid, spectral unmixing scaffold, high-dimensional cluster explorer scaffold, figure layout, reproducible pipeline view, workspace sharing surface, onboarding-ready empty/import states, and gated clinical-mode concept.
 - Live population statistics include count, % parent, % total, median, mean, geometric mean, robust CV, percentiles, CSV export, clipboard copy, and a CD4/CD8 derived-parameter workflow.
+- Compensation matrix edits apply to the active event stream, redraw plots/statistics, parse embedded spillover keywords when present, and drive the N-by-N spillover QC grid.
 
 ## Architecture choice
 
@@ -45,7 +46,7 @@ These areas are represented in the UI and state model but should not be treated 
 - Reference-validated biexponential/logicle parity with `flowCore` and canonical tick semantics.
 - Million-event GPU/datashader rendering guarantees and optimized incremental gate recomputation.
 - Full drag-and-drop table-builder UX, samples-as-rows pivoting, and native Excel export.
-- Automated compensation from single-stain controls.
+- Validated compensation fitting from single-stain controls and per-group/per-sample matrix assignment workflows.
 - NNLS spectral unmixing on real raw spectra.
 - UMAP/t-SNE/FlowSOM numerical algorithms and reproducibility tests.
 - GatingML / FlowJo / Cytobank round-trip interoperability.

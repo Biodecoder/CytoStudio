@@ -22,6 +22,17 @@ const state = {
   inspectorTab: "plot",
   layout: JSON.parse(localStorage.getItem("cyto.layout") || "{}"),
   importProgress: 0,
+  compensation: {
+    enabled: true,
+    version: 1,
+    channels: ["cd3", "cd4", "cd8", "cd19"],
+    matrix: {
+      cd3: { cd3: 1, cd4: 0.018, cd8: 0.026, cd19: 0.012 },
+      cd4: { cd3: 0.014, cd4: 1, cd8: 0.032, cd19: 0.02 },
+      cd8: { cd3: 0.021, cd4: 0.028, cd8: 1, cd19: 0.018 },
+      cd19: { cd3: 0.011, cd4: 0.016, cd8: 0.023, cd19: 1 }
+    }
+  },
   samples: [
     { id: "s1", name: "PBMC Panel.fcs", events: 10432912, group: "Treatment A", status: "ready", metadata: { instrument: "Aurora CS", operator: "Core Facility", acquired: "2026-06-01", compensation: "Imported 8x8", keywords: 412 } },
     { id: "s2", name: "Donor 02 Restim.fcs", events: 8945102, group: "Treatment A", status: "ready", metadata: { instrument: "Aurora CS", operator: "Core Facility", acquired: "2026-05-31", compensation: "Group matrix", keywords: 397 } },
@@ -154,7 +165,48 @@ function plot(id) {
 
 function activeEvents() {
   const sample = selectedSample();
-  return sample?.parsedEvents?.length ? sample.parsedEvents : syntheticEvents;
+  const baseEvents = sample?.parsedEvents?.length ? sample.parsedEvents : syntheticEvents;
+  return compensatedEvents(baseEvents, sample);
+}
+
+function compensatedEvents(baseEvents, sample = selectedSample()) {
+  const comp = currentCompensation();
+  if (!comp.enabled) return baseEvents;
+  if (sample && sample.compensatedVersion === comp.version && sample.compensatedEvents) return sample.compensatedEvents;
+  const events = baseEvents.map(event => compensateEvent(event));
+  if (sample) {
+    sample.compensatedVersion = comp.version;
+    sample.compensatedEvents = events;
+  }
+  return events;
+}
+
+function compensateEvent(event) {
+  const comp = currentCompensation();
+  const channels = comp.channels.filter(id => Number.isFinite(event[id]));
+  if (!channels.length) return event;
+  const corrected = { ...event };
+  channels.forEach(detector => {
+    let value = event[detector];
+    channels.forEach(source => {
+      if (source === detector) return;
+      value -= (comp.matrix[source]?.[detector] || 0) * event[source];
+    });
+    corrected[detector] = value;
+  });
+  return corrected;
+}
+
+function currentCompensation() {
+  return selectedSample()?.compensation || state.compensation;
+}
+
+function invalidateCompensation() {
+  const comp = currentCompensation();
+  comp.version = (comp.version || 1) + 1;
+  selectedSample().compensation = comp;
+  delete selectedSample().compensatedEvents;
+  delete selectedSample().compensatedVersion;
 }
 
 function activeEventScale() {
@@ -760,17 +812,61 @@ function tableSurface() {
 }
 
 function compensationSurface() {
-  const markers = ["FITC", "PE", "APC", "BV421"];
+  const markers = compensationChannels();
+  const comp = currentCompensation();
   return `<div class="surface">
     <div class="surface-grid">
-      <div class="surface-card"><h3>Compensation Matrix</h3><p>Rows are source fluorophores, columns are detectors. Embedded matrices import from files; control-derived and auto-comp are scaffolded for review.</p>${matrixHTML(markers)}<div class="button-row"><button class="primary" data-action="apply-comp">Apply live</button><button class="secondary">Auto-compensate</button><button class="secondary">Import matrix</button></div></div>
-      <div class="surface-card"><h3>Spillover QC Grid</h3><p>N-by-N miniature plots flag under/over compensation. Adjusting matrix cells redraws this view and the main plots.</p><div class="mini-grid">${markers.flatMap(a => markers.map(b => `<div class="mini-plot"><span>${a}/${b}</span><canvas data-mini="spill"></canvas></div>`)).join("")}</div></div>
+      <div class="surface-card"><h3>Compensation Matrix</h3><p>Rows are source fluorophores, columns are detectors. Matrix edits apply to the local event stream and redraw dependent plots/statistics.</p>${matrixHTML(markers)}<div class="button-row"><button class="primary" data-action="apply-comp">${comp.enabled ? "Compensation on" : "Apply live"}</button><button class="secondary" data-action="auto-comp">Auto-compensate</button><button class="secondary">Import matrix</button></div></div>
+      <div class="surface-card"><h3>Spillover QC Grid</h3><p>N-by-N miniature plots use the same compensated event stream. Diagonal clouds should remain tight while off-diagonal spillover flattens.</p><div class="mini-grid">${markers.flatMap(a => markers.map(b => `<div class="mini-plot"><span>${statParamLabel(a)}/${statParamLabel(b)}</span><canvas data-mini="spill" data-x="${a}" data-y="${b}"></canvas></div>`)).join("")}</div></div>
     </div>
   </div>`;
 }
 
 function matrixHTML(markers) {
-  return `<table class="matrix"><thead><tr><th></th>${markers.map(m => `<th>${m}</th>`).join("")}</tr></thead><tbody>${markers.map((row, r) => `<tr><th>${row}</th>${markers.map((col, c) => `<td><input value="${r === c ? "1.000" : (0.012 + ((r + c) % 4) * 0.018).toFixed(3)}"></td>`).join("")}</tr>`).join("")}</tbody></table>`;
+  const comp = currentCompensation();
+  return `<table class="matrix"><thead><tr><th></th>${markers.map(m => `<th>${statParamLabel(m)}</th>`).join("")}</tr></thead><tbody>${markers.map(row => `<tr><th>${statParamLabel(row)}</th>${markers.map(col => `<td><input data-comp-source="${row}" data-comp-detector="${col}" value="${(comp.matrix[row]?.[col] ?? (row === col ? 1 : 0)).toFixed(3)}" ${row === col ? "readonly" : ""}></td>`).join("")}</tr>`).join("")}</tbody></table>`;
+}
+
+function compensationChannels() {
+  return currentCompensation().channels.filter(id => param(id));
+}
+
+function autoCompensate() {
+  const comp = currentCompensation();
+  const rawEvents = selectedSample()?.parsedEvents?.length ? selectedSample().parsedEvents : syntheticEvents;
+  const channels = compensationChannels();
+  channels.forEach(source => {
+    comp.matrix[source] = comp.matrix[source] || {};
+    channels.forEach(detector => {
+      if (source === detector) {
+        comp.matrix[source][detector] = 1;
+        return;
+      }
+      const coefficient = Math.max(0, Math.min(0.18, covarianceSlope(rawEvents, source, detector) * 0.08));
+      comp.matrix[source][detector] = Number(coefficient.toFixed(3));
+    });
+  });
+  comp.enabled = true;
+  selectedSample().compensation = comp;
+  invalidateCompensation();
+  addHistory("Estimated compensation matrix from active sample correlations");
+  toast("Auto-comp estimate applied for review");
+  render();
+}
+
+function covarianceSlope(events, source, detector) {
+  const usable = events.filter(event => Number.isFinite(event[source]) && Number.isFinite(event[detector])).slice(0, 3000);
+  if (usable.length < 2) return 0;
+  const meanSource = mean(usable.map(event => event[source]));
+  const meanDetector = mean(usable.map(event => event[detector]));
+  let covariance = 0;
+  let variance = 0;
+  usable.forEach(event => {
+    const dx = event[source] - meanSource;
+    covariance += dx * (event[detector] - meanDetector);
+    variance += dx * dx;
+  });
+  return variance ? Math.abs(covariance / variance) : 0;
 }
 
 function spectralSurface() {
@@ -813,13 +909,18 @@ function drawMiniPlots() {
   document.querySelectorAll("[data-mini='spill']").forEach((canvas, i) => {
     const { ctx, width, height } = setupCanvas(canvas);
     ctx.clearRect(0, 0, width, height);
-    for (let p = 0; p < 140; p++) {
-      const x = (rand(i * 1000 + p) * 0.8 + 0.1) * width;
-      const y = (0.72 - x / width * 0.18 + gaussian(i + p, 0, 0.12)) * height;
-      ctx.fillStyle = densityColor(rand(p + i));
+    const xId = canvas.dataset.x;
+    const yId = canvas.dataset.y;
+    const xParam = param(xId);
+    const yParam = param(yId);
+    const events = activeEvents();
+    events.slice(0, 420).forEach((event, p) => {
+      const x = normalize(event[xId], xParam, xParam.scale, defaultTransformSettings()) * width;
+      const y = (1 - normalize(event[yId], yParam, yParam.scale, defaultTransformSettings())) * height;
+      ctx.fillStyle = densityColor((p % 31) / 31);
       ctx.globalAlpha = 0.55;
       ctx.fillRect(x, y, 1.6, 1.6);
-    }
+    });
     ctx.globalAlpha = 1;
   });
 }
@@ -965,11 +1066,18 @@ function sampleFromParsedFCS(name, parsed) {
     })),
     parsedEvents: parsed.events,
     populationCounts: makePopulationCounts(parsed.eventCount),
+    compensation: parsed.spillover ? {
+      enabled: true,
+      version: 1,
+      channels: parsed.spillover.channels,
+      matrix: parsed.spillover.matrix,
+      source: parsed.spillover.sourceKeyword
+    } : null,
     metadata: {
       instrument: parsed.metadata.instrument,
       operator: parsed.metadata.operator,
       acquired: parsed.metadata.acquired,
-      compensation: parsed.metadata.compensation ? "Embedded spillover parsed" : "No embedded matrix",
+      compensation: parsed.spillover ? `Embedded ${parsed.spillover.sourceKeyword} parsed` : "No embedded matrix",
       keywords: parsed.metadata.keywordCount
     }
   };
@@ -1100,6 +1208,20 @@ function bindEvents() {
     renderInspector();
   }));
   document.body.addEventListener("change", event => {
+    const compSource = event.target.dataset.compSource;
+    const compDetector = event.target.dataset.compDetector;
+    if (compSource && compDetector) {
+      const value = Math.max(-2, Math.min(2, Number(event.target.value)));
+      const comp = currentCompensation();
+      comp.matrix[compSource] = comp.matrix[compSource] || {};
+      comp.matrix[compSource][compDetector] = compSource === compDetector ? 1 : (Number.isFinite(value) ? value : 0);
+      comp.enabled = true;
+      selectedSample().compensation = comp;
+      invalidateCompensation();
+      addHistory(`Adjusted compensation ${statParamLabel(compSource)} -> ${statParamLabel(compDetector)}`);
+      requestAnimationFrame(render);
+      return;
+    }
     const transformAxis = event.target.dataset.transformAxis;
     const transformKey = event.target.dataset.transformKey;
     if (transformAxis && transformKey) {
@@ -1163,6 +1285,18 @@ function bindEvents() {
       addHistory("Ran reproducible UMAP scaffold with seed 42");
       toast("UMAP scaffold complete; clusters backgated");
       render();
+    }
+    if (action === "apply-comp") {
+      const comp = currentCompensation();
+      comp.enabled = true;
+      selectedSample().compensation = comp;
+      invalidateCompensation();
+      addHistory("Applied compensation matrix to active sample");
+      toast("Compensation applied live");
+      render();
+    }
+    if (action === "auto-comp") {
+      autoCompensate();
     }
     if (action === "add-derived") addDerivedParameter();
     if (action === "copy-table") copyStatisticsTable();

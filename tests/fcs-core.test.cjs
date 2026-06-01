@@ -34,6 +34,7 @@ function buildFixture() {
       ["$CYT", "CytoStudio Test Cytometer"],
       ["$OP", "Unit Test"],
       ["$DATE", "01-JUN-2026"],
+      ["$SPILLOVER", "2,CD3-A,SSC-A,1,0.12,0.03,1"],
       ["$P1N", "FSC-A"],
       ["$P1S", "Forward Scatter"],
       ["$P1B", "32"],
@@ -74,6 +75,9 @@ assert.equal(parsed.eventCount, 3);
 assert.equal(parsed.parameters.length, 3);
 assert.equal(parsed.parameters[2].label, "CD3 APC (CD3-A)");
 assert.equal(parsed.metadata.instrument, "CytoStudio Test Cytometer");
+assert.equal(parsed.spillover.sourceKeyword, "$SPILLOVER");
+assert.deepEqual(parsed.spillover.channels, ["cd3_apc", "side_scatter"]);
+assert.equal(parsed.spillover.matrix.cd3_apc.side_scatter, 0.12);
 assert.equal(parsed.events[0].forward_scatter, 100);
 assert.equal(parsed.events[2].cd3_apc, 125);
 

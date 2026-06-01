@@ -91,6 +91,33 @@
     return parameters;
   }
 
+  function parseSpilloverMatrix(keywords, parameters) {
+    const raw = keywords.$SPILLOVER || keywords.SPILL || keywords.$COMP || "";
+    if (!raw) return null;
+    const parts = raw.split(",").map(part => part.trim()).filter(Boolean);
+    const size = Number(parts[0]);
+    if (!Number.isFinite(size) || size <= 0 || parts.length < 1 + size + size * size) return null;
+    const channelLabels = parts.slice(1, 1 + size);
+    const values = parts.slice(1 + size).map(Number);
+    const channels = channelLabels.map(label => {
+      const match = parameters.find(parameter => parameter.raw === label || parameter.stain === label || parameter.label === label);
+      return match?.id || safeId(label);
+    });
+    const matrix = {};
+    channels.forEach((source, row) => {
+      matrix[source] = {};
+      channels.forEach((detector, col) => {
+        matrix[source][detector] = values[row * size + col] ?? (source === detector ? 1 : 0);
+      });
+    });
+    return {
+      channels,
+      matrix,
+      labels: channelLabels,
+      sourceKeyword: keywords.$SPILLOVER ? "$SPILLOVER" : (keywords.SPILL ? "SPILL" : "$COMP")
+    };
+  }
+
   function safeId(value) {
     return String(value)
       .toLowerCase()
@@ -144,6 +171,7 @@
     const keywords = parseTextSegment(textSegment);
     const offsets = getOffsets(header, keywords);
     const parameters = getParameters(keywords);
+    const spillover = parseSpilloverMatrix(keywords, parameters);
     const events = parseEvents(buffer, keywords, parameters, offsets, options);
     return {
       version: header.version,
@@ -154,11 +182,12 @@
       eventCount: keywordNumber(keywords, "$TOT"),
       parsedEventCount: events.length,
       events,
+      spillover,
       metadata: {
         instrument: keywords.$CYT || keywords.CYT || "Unknown instrument",
         operator: keywords.$OP || keywords.OP || "Unknown operator",
         acquired: keywords.$DATE || keywords.DATE || "Unknown acquisition date",
-        compensation: keywords.$SPILLOVER || keywords.SPILL || keywords.$COMP || "",
+        compensation: spillover ? spillover.sourceKeyword : "",
         keywordCount: Object.keys(keywords).length
       }
     };
@@ -190,5 +219,5 @@
     }
   };
 
-  return { parseFCS, parseHeader, parseTextSegment, transforms };
+  return { parseFCS, parseHeader, parseTextSegment, parseSpilloverMatrix, transforms };
 });
