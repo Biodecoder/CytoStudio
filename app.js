@@ -137,7 +137,10 @@ const state = {
     recoveryAvailable: Boolean(localStorage.getItem("cyto.workspace.autosave")),
     shareStatus: "local only",
     syncEnabled: false,
-    imports: []
+    imports: [],
+    conflicts: [],
+    syncLog: [],
+    sharedVersion: Number(localStorage.getItem("cyto.shared.version") || 0)
   },
   onboarding: {
     visible: !localStorage.getItem("cyto.onboarded"),
@@ -1736,9 +1739,10 @@ function shareSurface() {
   const workspace = state.workspace;
   const records = pipelineRecords();
   return `<div class="surface"><div class="surface-grid">
-    <div class="surface-card"><h3>Workspace Files & Sharing</h3><p>Workspace JSON captures sample references, content hashes, gates, plots, layout, settings, and the full pipeline without duplicating raw FCS data.</p><div class="button-row"><button class="primary" data-action="save-workspace">Save workspace</button><button class="secondary" data-action="open-workspace">Open autosave</button><button class="secondary" data-action="share-package">Share package</button><button class="secondary" data-action="toggle-autosave">${workspace.autosave ? "Autosave on" : "Autosave off"}</button><button class="secondary" data-action="toggle-sync">${workspace.syncEnabled ? "Shared sync on" : "Shared sync off"}</button></div><div class="report-list"><div class="kv-row"><span>Workspace</span><strong>${workspace.name}</strong></div><div class="kv-row"><span>Last saved</span><strong>${workspace.lastSaved}</strong></div><div class="kv-row"><span>Recovery</span><strong>${workspace.recoveryAvailable ? "available" : "none"}</strong></div><div class="kv-row"><span>Share status</span><strong>${workspace.shareStatus}</strong></div></div></div>
-    <div class="surface-card"><h3>Interoperability</h3><p>Import/export actions use proof adapters for GatingML, FlowJo, and Cytobank workspace migration while preserving the audit trail.</p><div class="button-row"><button class="primary" data-action="export-gatingml">Export GatingML</button><button class="secondary" data-action="import-gatingml">Import GatingML</button><button class="secondary" data-action="import-flowjo">Import FlowJo</button><button class="secondary" data-action="import-cytobank">Import Cytobank</button></div><div class="report-list"><div class="kv-row"><span>Raw data policy</span><strong>Reference by hash</strong></div><div class="kv-row"><span>Imports</span><strong>${workspace.imports.length || "none"}</strong></div><div class="kv-row"><span>Audit log</span><strong>${records.length} structured entries</strong></div><div class="kv-row"><span>Team handoff</span><strong>${workspace.syncEnabled ? "change log enabled" : "local package"}</strong></div></div></div>
-    <div class="surface-card"><h3>Change Log</h3><div class="timeline-list">${records.slice(-8).map((record, index) => `<button><strong>${index + 1}</strong><span>${pipelineRecordLabel(record)}<em>${pipelineRecordKind(record)}</em></span></button>`).join("")}</div></div>
+    <div class="surface-card"><h3>Workspace Files & Sharing</h3><p>Workspace JSON captures sample references, content hashes, gates, plots, layouts, settings, and the full structured pipeline without duplicating raw FCS data.</p><div class="button-row"><button class="primary" data-action="save-workspace">Save workspace</button><button class="secondary" data-action="open-workspace-file">Open workspace</button><button class="secondary" data-action="open-workspace">Recover autosave</button><button class="secondary" data-action="share-package">Share package</button><button class="secondary" data-action="toggle-autosave">${workspace.autosave ? "Autosave on" : "Autosave off"}</button></div><div class="report-list"><div class="kv-row"><span>Workspace</span><strong>${workspace.name}</strong></div><div class="kv-row"><span>Last saved</span><strong>${workspace.lastSaved}</strong></div><div class="kv-row"><span>Recovery</span><strong>${workspace.recoveryAvailable ? "available" : "none"}</strong></div><div class="kv-row"><span>Share status</span><strong>${workspace.shareStatus}</strong></div></div></div>
+    <div class="surface-card"><h3>Shared Location Handoff</h3><p>Optional browser-local sync simulates a shared folder handoff with versioning, conflict detection, and a small-team change log.</p><div class="button-row"><button class="primary" data-action="toggle-sync">${workspace.syncEnabled ? "Shared sync on" : "Shared sync off"}</button><button class="secondary" data-action="publish-sync">Publish</button><button class="secondary" data-action="pull-sync">Pull latest</button></div><div class="report-list"><div class="kv-row"><span>Shared version</span><strong>${workspace.sharedVersion || "none"}</strong></div><div class="kv-row"><span>Conflicts</span><strong>${workspace.conflicts.length || "none"}</strong></div><div class="kv-row"><span>Team handoff</span><strong>${workspace.syncEnabled ? "change log enabled" : "local package"}</strong></div></div></div>
+    <div class="surface-card"><h3>Interoperability</h3><p>Import/export actions use proof adapters for GatingML, FlowJo, and Cytobank workspace migration while preserving the audit trail.</p><div class="button-row"><button class="primary" data-action="export-gatingml">Export GatingML</button><button class="secondary" data-action="import-gatingml">Import GatingML</button><button class="secondary" data-action="import-flowjo">Import FlowJo</button><button class="secondary" data-action="import-cytobank">Import Cytobank</button></div><div class="report-list"><div class="kv-row"><span>Raw data policy</span><strong>Reference by hash</strong></div><div class="kv-row"><span>Imports</span><strong>${workspace.imports.length || "none"}</strong></div><div class="kv-row"><span>Audit log</span><strong>${records.length} structured entries</strong></div><div class="kv-row"><span>Latest import</span><strong>${workspace.imports.at(-1)?.kind || "none"}</strong></div></div></div>
+    <div class="surface-card"><h3>Audit Change Log</h3><div class="timeline-list">${records.slice(-8).map((record, index) => `<button><strong>${index + 1}</strong><span>${pipelineRecordLabel(record)}<em>${pipelineRecordKind(record)} · ${new Date(record.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</em></span></button>`).join("")}</div></div>
   </div></div>`;
 }
 
@@ -3114,9 +3118,11 @@ function downloadText(filename, text, type) {
 
 function workspacePayload() {
   return {
-    format: "cytostudio.workspace.v1",
+    format: "cytostudio.workspace.v2",
     name: state.workspace.name,
     savedAt: new Date().toISOString(),
+    savedBy: state.clinical.user || "Research User",
+    version: state.workspace.sharedVersion || 1,
     samples: state.samples.map(sample => ({
       id: sample.id,
       name: sample.name,
@@ -3125,7 +3131,9 @@ function workspacePayload() {
       contentHash: sample.hash || `demo-${sample.id}-${sample.events}`,
       events: sample.events,
       metadata: sample.metadata,
-      templateId: sample.templateId
+      templateId: sample.templateId,
+      populationCounts: sample.populationCounts || null,
+      replayPreview: sample.replayPreview || null
     })),
     populations: state.populations,
     gates: state.gates,
@@ -3135,8 +3143,59 @@ function workspacePayload() {
     settings: { theme: state.theme, compensation: state.compensation, spectral: state.spectral },
     pipeline: state.pipeline,
     pipelineRecords: pipelineRecords(),
-    replayPreview: state.report.replayPreview
+    replayPreview: state.report.replayPreview,
+    workspace: {
+      imports: state.workspace.imports,
+      syncLog: state.workspace.syncLog,
+      conflicts: state.workspace.conflicts,
+      shareStatus: state.workspace.shareStatus
+    }
   };
+}
+
+function applyWorkspacePayload(payload, source = "workspace file") {
+  if (!payload || !/cytostudio\.workspace/.test(payload.format || "")) {
+    throw new Error("Not a CytoStudio workspace");
+  }
+  const localSavedAt = localStorage.getItem("cyto.workspace.savedAt");
+  state.workspace.conflicts = [];
+  if (localSavedAt && payload.savedAt && new Date(payload.savedAt) < new Date(localSavedAt)) {
+    state.workspace.conflicts.push(`Opened older workspace from ${source}`);
+  }
+  state.workspace.name = payload.name || state.workspace.name;
+  if (Array.isArray(payload.samples)) {
+    state.samples = payload.samples.map(sample => ({
+      ...sample,
+      path: sample.rawReference,
+      status: "ready",
+      parsed: false,
+      metadata: sample.metadata || {},
+      populationCounts: sample.populationCounts || undefined,
+      replayPreview: sample.replayPreview || undefined
+    }));
+  }
+  if (Array.isArray(payload.populations)) state.populations = payload.populations;
+  if (Array.isArray(payload.gates)) state.gates = payload.gates;
+  if (Array.isArray(payload.plots)) state.plots = payload.plots;
+  if (Array.isArray(payload.templates)) state.templates = payload.templates;
+  if (payload.figure) state.figure = payload.figure;
+  if (payload.settings?.theme) state.theme = payload.settings.theme;
+  if (payload.settings?.compensation) state.compensation = payload.settings.compensation;
+  if (payload.settings?.spectral) state.spectral = payload.settings.spectral;
+  if (Array.isArray(payload.pipeline)) state.pipeline = payload.pipeline;
+  state.pipelineRecords = Array.isArray(payload.pipelineRecords) ? payload.pipelineRecords : [];
+  initializePipelineRecords();
+  if (payload.replayPreview) state.report.replayPreview = payload.replayPreview;
+  if (payload.workspace?.imports) state.workspace.imports = payload.workspace.imports;
+  if (payload.workspace?.syncLog) state.workspace.syncLog = payload.workspace.syncLog;
+  if (payload.workspace?.conflicts?.length) state.workspace.conflicts.push(...payload.workspace.conflicts);
+  state.selectedSample = state.samples.some(sample => sample.id === state.selectedSample) ? state.selectedSample : state.samples[0]?.id;
+  state.selectedPopulation = state.populations.some(pop => pop.id === state.selectedPopulation) ? state.selectedPopulation : state.populations[0]?.id;
+  state.selectedPlot = state.plots.some(p => p.id === state.selectedPlot) ? state.selectedPlot : state.plots[0]?.id;
+  state.workspace.shareStatus = `${source} opened`;
+  state.workspace.lastSaved = payload.savedAt ? new Date(payload.savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "opened";
+  localStorage.setItem("cyto.workspace.savedAt", payload.savedAt || new Date().toISOString());
+  addHistory(`Opened ${source} with ${state.samples.length} raw-data references`, { kind: "pipeline", payload: { source, samples: state.samples.length, conflicts: state.workspace.conflicts.length } });
 }
 
 function autosaveWorkspace() {
@@ -3150,8 +3209,27 @@ function saveWorkspaceFile() {
   downloadText("cytostudio-workspace.json", JSON.stringify(payload, null, 2), "application/json");
   state.workspace.lastSaved = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   state.workspace.shareStatus = "workspace saved";
+  localStorage.setItem("cyto.workspace.savedAt", payload.savedAt);
   autosaveWorkspace();
   addHistory("Saved workspace JSON with raw data references and content hashes");
+  render();
+}
+
+function openWorkspaceFile() {
+  document.getElementById("workspaceInput").click();
+}
+
+async function importWorkspaceFiles(files) {
+  const file = files?.[0];
+  if (!file) return;
+  const text = await file.text();
+  if (/gatingml|xml$/i.test(file.name)) {
+    importGatingMLText(text, file.name);
+  } else if (/flowjo|\.wsp$/i.test(file.name)) {
+    importInterop("FlowJo", { file: file.name, bytes: file.size });
+  } else {
+    applyWorkspacePayload(JSON.parse(text), file.name);
+  }
   render();
 }
 
@@ -3161,14 +3239,8 @@ function openAutosavedWorkspace() {
     toast("No autosave available");
     return;
   }
-  const payload = JSON.parse(raw);
-  state.workspace.name = payload.name || state.workspace.name;
-  if (Array.isArray(payload.pipelineRecords)) state.pipelineRecords = payload.pipelineRecords;
-  if (Array.isArray(payload.pipeline)) state.pipeline = payload.pipeline;
-  if (payload.replayPreview) state.report.replayPreview = payload.replayPreview;
+  applyWorkspacePayload(JSON.parse(raw), "autosave recovery");
   state.workspace.shareStatus = "autosave recovered";
-  state.workspace.lastSaved = "recovered";
-  addHistory("Recovered workspace from local autosave");
   render();
 }
 
@@ -3196,9 +3268,60 @@ function toggleWorkspaceSync() {
   render();
 }
 
-function importInterop(kind) {
-  state.workspace.imports.push({ kind, at: new Date().toISOString() });
-  addHistory(`Imported ${kind} workspace proof into audit trail`);
+function publishSharedWorkspace() {
+  const payload = workspacePayload();
+  payload.version = (Number(localStorage.getItem("cyto.shared.version") || 0) || state.workspace.sharedVersion || 0) + 1;
+  localStorage.setItem("cyto.shared.workspace", JSON.stringify(payload));
+  localStorage.setItem("cyto.shared.version", String(payload.version));
+  state.workspace.sharedVersion = payload.version;
+  state.workspace.syncEnabled = true;
+  state.workspace.syncLog.push({ at: payload.savedAt, user: payload.savedBy, action: "published", version: payload.version });
+  state.workspace.shareStatus = `shared version ${payload.version} published`;
+  addHistory(`Published workspace to shared location version ${payload.version}`, { kind: "pipeline", payload: { version: payload.version } });
+  render();
+}
+
+function pullSharedWorkspace() {
+  const raw = localStorage.getItem("cyto.shared.workspace");
+  if (!raw) {
+    toast("No shared workspace found");
+    return;
+  }
+  const payload = JSON.parse(raw);
+  if (state.workspace.sharedVersion && payload.version < state.workspace.sharedVersion) {
+    state.workspace.conflicts.push(`Local version ${state.workspace.sharedVersion} is newer than shared ${payload.version}`);
+  }
+  state.workspace.sharedVersion = payload.version || state.workspace.sharedVersion;
+  applyWorkspacePayload(payload, "shared location");
+  state.workspace.syncEnabled = true;
+  state.workspace.syncLog.push({ at: new Date().toISOString(), user: state.clinical.user, action: "pulled", version: state.workspace.sharedVersion });
+  render();
+}
+
+function importGatingMLText(text, fileName = "GatingML") {
+  const gateMatches = [...text.matchAll(/(?:PolygonGate|RectangleGate|Gate)[^>]*(?:id|gating:id)="([^"]+)"/g)];
+  const importedCount = gateMatches.length || 1;
+  const id = `imported-gatingml-${Date.now()}`;
+  state.workspace.imports.push({ kind: "GatingML", at: new Date().toISOString(), file: fileName, gates: importedCount, status: "mapped" });
+  state.templates.push({ id, name: `Imported GatingML ${state.workspace.imports.length}`, sourceSample: selectedSample().id, version: 1, savedAt: new Date().toISOString().slice(0, 10), populations: state.populations.length, gates: importedCount });
+  addHistory(`Imported GatingML workspace proof from ${fileName} with ${importedCount} gate definition(s)`, { kind: "export", payload: { fileName, importedCount } });
+  toast("GatingML import proof recorded");
+}
+
+function importInterop(kind, details = {}) {
+  const id = `interop-${kind.toLowerCase()}-${Date.now()}`;
+  const importRecord = {
+    kind,
+    at: new Date().toISOString(),
+    file: details.file || `${kind} demo workspace`,
+    bytes: details.bytes || 0,
+    gates: state.gates.length,
+    populations: state.populations.length,
+    status: "mapped to CytoStudio template proof"
+  };
+  state.workspace.imports.push(importRecord);
+  state.templates.push({ id, name: `${kind} migrated hierarchy`, sourceSample: selectedSample().id, version: 1, savedAt: importRecord.at.slice(0, 10), populations: importRecord.populations, gates: importRecord.gates });
+  addHistory(`Imported ${kind} workspace proof into audit trail`, { kind: "pipeline", payload: importRecord });
   toast(`${kind} import proof recorded`);
   render();
 }
@@ -3644,10 +3767,13 @@ function bindEvents() {
     if (action === "export-event-table") exportEventTable();
     if (action === "export-stats-excel") exportStatsExcel();
     if (action === "save-workspace") saveWorkspaceFile();
+    if (action === "open-workspace-file") openWorkspaceFile();
     if (action === "open-workspace") openAutosavedWorkspace();
     if (action === "share-package") shareWorkspacePackage();
     if (action === "toggle-autosave") toggleAutosave();
     if (action === "toggle-sync") toggleWorkspaceSync();
+    if (action === "publish-sync") publishSharedWorkspace();
+    if (action === "pull-sync") pullSharedWorkspace();
     if (action === "import-gatingml") importInterop("GatingML");
     if (action === "import-flowjo") importInterop("FlowJo");
     if (action === "import-cytobank") importInterop("Cytobank");
@@ -3739,6 +3865,7 @@ function bindEvents() {
   });
   document.getElementById("sampleSearch").addEventListener("input", renderSamples);
   document.getElementById("fileInput").addEventListener("change", event => importFiles(event.target.files));
+  document.getElementById("workspaceInput").addEventListener("change", event => importWorkspaceFiles(event.target.files));
   const dropZone = document.getElementById("dropZone");
   ["dragenter", "dragover"].forEach(type => dropZone.addEventListener(type, event => {
     event.preventDefault();

@@ -33,7 +33,7 @@ Then visit `http://localhost:5178`.
 - High-dimensional analysis can run a sampled reproducible UMAP/t-SNE-style embedding, assign FlowSOM/graph-style clusters, color by marker, inspect a cluster heatmap, compare samples, and backgate a selected cluster into the population tree.
 - Figure layout editor supports live linked plot tiles, labels, arrows, inset plots, direct drag/resize handles, snapping/alignment controls, appearance controls, template saving, selected-plot package export, and browser-native export proofs.
 - Pipeline view supports typed action history, step details, target-sample replay preview, report proof generation, structured pipeline JSON, gated FCS proof, event CSV/Parquet proof, statistics Excel-compatible export, and GatingML proof export with dimensions and geometry metadata.
-- Workspace sharing view saves raw-data-referencing workspace JSON, autosaves recovery state, exports share packages, records audit/change logs, and provides GatingML/FlowJo/Cytobank import proof actions.
+- Workspace sharing view saves/reopens raw-data-referencing workspace JSON, autosaves recovery state, exports share packages, simulates shared-location handoff with conflict/change-log status, records structured audit logs, and provides GatingML/FlowJo/Cytobank import proof actions.
 - Onboarding overlay, bundled conventional/spectral sample launch paths, coach marks, keyboard cheat sheet, high-contrast mode, and direct shortcuts support first-run exploration and accessibility.
 - Optional clinical mode remains off by default and adds role configuration, locked/finalized analysis state, electronic signature proof, immutable audit preview, retention/access settings, and compliance export proof without making validation claims.
 
@@ -67,7 +67,7 @@ These areas are represented in the UI and state model but should not be treated 
 - Validated UMAP/t-SNE/FlowSOM numerical algorithms and graph community detection beyond the current deterministic worker-backed approximation.
 - High-fidelity PDF/TIFF/vector export, full drag-resize handles, print color management, and per-plot export packaging.
 - Validated PDF generation, binary FCS writing, Parquet/Excel writers, GatingML conformance, and FlowJo / Cytobank round-trip interoperability.
-- Robust native open/save dialogs, file locks, conflict resolution, real shared-location sync, and production FlowJo/Cytobank migration tooling.
+- Native open/save dialogs, real file locks, multi-user merge conflict resolution, real shared-location sync, and production FlowJo/Cytobank migration tooling.
 - Full VoiceOver audit, formal color-contrast certification, and large-file memory/performance profiling on production datasets.
 - 21 CFR Part 11 validation, lab SOP/legal review, production authentication, validated e-signatures, retention enforcement, and clinical compliance.
 
