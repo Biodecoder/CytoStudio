@@ -98,6 +98,15 @@ const state = {
     syncEnabled: false,
     imports: []
   },
+  onboarding: {
+    visible: !localStorage.getItem("cyto.onboarded"),
+    step: 0,
+    coach: true,
+    shortcutsVisible: false
+  },
+  accessibility: {
+    contrast: localStorage.getItem("cyto.contrast") === "1"
+  },
   pipelineCursor: null,
   samples: [
     { id: "s1", name: "PBMC Panel.fcs", events: 10432912, group: "Treatment A", status: "ready", templateId: "tcell-panel", metadata: { instrument: "Aurora CS", operator: "Core Facility", acquired: "2026-06-01", compensation: "Imported 8x8", keywords: 412 } },
@@ -380,11 +389,13 @@ function saveLayout() {
 function render() {
   recomputePopulationCounts();
   document.getElementById("app").dataset.theme = state.theme;
+  document.getElementById("app").dataset.contrast = state.accessibility.contrast ? "high" : "normal";
   renderSamples();
   renderTree();
   renderView();
   renderInspector();
   renderStatus();
+  renderOnboarding();
 }
 
 function renderSamples() {
@@ -451,7 +462,7 @@ function renderView() {
   document.querySelectorAll(".tab").forEach(tab => tab.classList.toggle("active", tab.dataset.view === state.activeView));
   const host = document.getElementById("viewHost");
   if (state.activeView === "canvas") {
-    host.innerHTML = `<div class="plot-grid">${state.plots.map(plotCardHTML).join("")}</div>`;
+    host.innerHTML = `<div class="plot-grid">${state.plots.map(plotCardHTML).join("")}</div>${state.onboarding.coach ? coachMarksHTML() : ""}`;
     host.querySelectorAll(".plot-card").forEach(card => {
       card.addEventListener("click", () => {
         state.selectedPlot = card.dataset.plot;
@@ -468,6 +479,30 @@ function renderView() {
     drawBatchCanvases();
     drawFigureCanvases();
   });
+}
+
+function coachMarksHTML() {
+  return `<div class="coach-marks" aria-label="Guided workflow tips"><div><strong>1 Draw a gate</strong><span>Choose Rect, Poly, Ellipse, Quad, Interval, or Lasso in the toolbar.</span></div><div><strong>2 View population</strong><span>Select a child population in the hierarchy to live-filter plots.</span></div><div><strong>3 Build statistics</strong><span>Open Statistics for table export and derived markers.</span></div></div>`;
+}
+
+function renderOnboarding() {
+  const host = document.getElementById("onboardingHost");
+  const shortcuts = state.onboarding.shortcutsVisible ? shortcutSheetHTML() : "";
+  if (!state.onboarding.visible) {
+    host.innerHTML = shortcuts;
+    return;
+  }
+  const steps = [
+    { title: "Welcome to CytoStudio", body: "Start with bundled sample data, then draw a gate, inspect a population, and export statistics.", action: "start-sample-conventional", label: "Open conventional sample" },
+    { title: "Try spectral and high-parameter data", body: "Load the spectral panel path, run unmixing or clustering, and compare populations without bringing your own files yet.", action: "start-sample-spectral", label: "Open spectral sample" },
+    { title: "Keyboard and accessibility", body: "Use Command-K for search, ? for shortcuts, G to create a gate, S for statistics, and high-contrast mode for color-safe review.", action: "toggle-contrast", label: "Toggle high contrast" }
+  ];
+  const step = steps[state.onboarding.step] || steps[0];
+  host.innerHTML = `<div class="onboarding-backdrop" role="dialog" aria-modal="true" aria-label="CytoStudio onboarding"><div class="onboarding-card"><div class="onboarding-art" aria-hidden="true"><span></span><span></span><span></span></div><h2>${step.title}</h2><p>${step.body}</p><div class="button-row"><button class="primary" data-action="${step.action}">${step.label}</button><button class="secondary" data-action="next-onboarding">Next</button><button class="secondary" data-action="show-shortcuts">Shortcuts</button><button class="secondary" data-action="close-onboarding">Done</button></div></div></div>${shortcuts}`;
+}
+
+function shortcutSheetHTML() {
+  return `<div class="shortcut-sheet" role="dialog" aria-label="Keyboard shortcuts"><h3>Keyboard Shortcuts</h3><div class="report-list"><div class="kv-row"><span>Command-K</span><strong>Command palette</strong></div><div class="kv-row"><span>?</span><strong>Toggle this sheet</strong></div><div class="kv-row"><span>G</span><strong>Create gate</strong></div><div class="kv-row"><span>S</span><strong>Statistics</strong></div><div class="kv-row"><span>F</span><strong>Figure editor</strong></div><div class="kv-row"><span>H</span><strong>High contrast</strong></div></div><button class="primary" data-action="show-shortcuts">Close</button></div>`;
 }
 
 function plotCardHTML(p) {
@@ -1911,6 +1946,40 @@ function importInterop(kind) {
   render();
 }
 
+function startOnboardingSample(kind) {
+  state.selectedSample = kind === "spectral" ? "s1" : "s1";
+  state.activeView = kind === "spectral" ? "spectral" : "canvas";
+  if (kind === "spectral") ensureSpectralParameters();
+  state.onboarding.visible = false;
+  localStorage.setItem("cyto.onboarded", "1");
+  addHistory(`Started onboarding with bundled ${kind} sample data`);
+  toast(`${kind === "spectral" ? "Spectral" : "Conventional"} sample ready`);
+  render();
+}
+
+function nextOnboardingStep() {
+  state.onboarding.step = (state.onboarding.step + 1) % 3;
+  renderOnboarding();
+}
+
+function closeOnboarding() {
+  state.onboarding.visible = false;
+  localStorage.setItem("cyto.onboarded", "1");
+  renderOnboarding();
+}
+
+function toggleShortcuts() {
+  state.onboarding.shortcutsVisible = !state.onboarding.shortcutsVisible;
+  renderOnboarding();
+}
+
+function toggleHighContrast() {
+  state.accessibility.contrast = !state.accessibility.contrast;
+  localStorage.setItem("cyto.contrast", state.accessibility.contrast ? "1" : "0");
+  addHistory(`High contrast accessibility mode ${state.accessibility.contrast ? "enabled" : "disabled"}`);
+  render();
+}
+
 function runSpectralUnmixing() {
   ensureSpectralParameters();
   state.spectral.enabled = true;
@@ -1962,6 +2031,9 @@ function commandItems() {
     { icon: "▣", label: "Create gate", meta: "action", run: createGate },
     { icon: "⇆", label: "Open compensation", meta: "view", run: () => state.activeView = "compensation" },
     { icon: "✦", label: "Run UMAP", meta: "view", run: () => state.activeView = "highdim" },
+    { icon: "?", label: "Show onboarding", meta: "help", run: () => { state.onboarding.visible = true; } },
+    { icon: "⌘", label: "Keyboard shortcuts", meta: "help", run: () => { state.onboarding.shortcutsVisible = true; } },
+    { icon: "◑", label: "High contrast", meta: "accessibility", run: toggleHighContrast },
     { icon: "◐", label: "Toggle appearance", meta: "action", run: () => state.theme = state.theme === "dark" ? "light" : "dark" }
   ];
 }
@@ -2159,6 +2231,12 @@ function bindEvents() {
     if (action === "import-gatingml") importInterop("GatingML");
     if (action === "import-flowjo") importInterop("FlowJo");
     if (action === "import-cytobank") importInterop("Cytobank");
+    if (action === "start-sample-conventional") startOnboardingSample("conventional");
+    if (action === "start-sample-spectral") startOnboardingSample("spectral");
+    if (action === "next-onboarding") nextOnboardingStep();
+    if (action === "close-onboarding") closeOnboarding();
+    if (action === "show-shortcuts") toggleShortcuts();
+    if (action === "toggle-contrast") toggleHighContrast();
     if (action === "apply-comp") {
       const comp = currentCompensation();
       comp.enabled = true;
@@ -2186,10 +2264,23 @@ function bindEvents() {
     if (action === "copy-table") copyStatisticsTable();
   });
   document.addEventListener("keydown", event => {
+    const typing = ["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName);
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
       event.preventDefault();
       openCommandPalette();
     }
+    if (typing) return;
+    if (event.key === "?") toggleShortcuts();
+    if (!event.metaKey && !event.ctrlKey && event.key.toLowerCase() === "g") createGate();
+    if (!event.metaKey && !event.ctrlKey && event.key.toLowerCase() === "s") {
+      state.activeView = "tables";
+      render();
+    }
+    if (!event.metaKey && !event.ctrlKey && event.key.toLowerCase() === "f") {
+      state.activeView = "figure";
+      render();
+    }
+    if (!event.metaKey && !event.ctrlKey && event.key.toLowerCase() === "h") toggleHighContrast();
     if (event.key === "Escape") closeCommandPalette();
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key) && state.activeTool !== "pointer") {
       addHistory(`Nudged selected ${state.activeTool} gate with ${event.key}`);

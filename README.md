@@ -31,6 +31,7 @@ Then visit `http://localhost:5178`.
 - Figure layout editor supports live linked plot tiles, labels, arrows, inset plots, snapping/alignment controls, appearance controls, template saving, and browser-native export proofs.
 - Pipeline view supports timeline stepping, replay recording, report proof generation, pipeline JSON, gated FCS proof, event CSV/Parquet proof, statistics Excel-compatible export, and GatingML proof export.
 - Workspace sharing view saves raw-data-referencing workspace JSON, autosaves recovery state, exports share packages, records audit/change logs, and provides GatingML/FlowJo/Cytobank import proof actions.
+- Onboarding overlay, bundled conventional/spectral sample launch paths, coach marks, keyboard cheat sheet, high-contrast mode, and direct shortcuts support first-run exploration and accessibility.
 
 ## Architecture choice
 
@@ -59,6 +60,7 @@ These areas are represented in the UI and state model but should not be treated 
 - High-fidelity PDF/TIFF/vector export, full drag-resize handles, print color management, and per-plot export packaging.
 - Validated PDF generation, binary FCS writing, Parquet/Excel writers, GatingML conformance, and FlowJo / Cytobank round-trip interoperability.
 - Robust native open/save dialogs, file locks, conflict resolution, real shared-location sync, and production FlowJo/Cytobank migration tooling.
+- Full VoiceOver audit, formal color-contrast certification, and large-file memory/performance profiling on production datasets.
 - 21 CFR Part 11 or clinical compliance.
 
 ## Original blueprint package
