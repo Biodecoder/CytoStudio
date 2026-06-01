@@ -264,6 +264,9 @@
       const width = options.width ?? 18;
       return Math.sign(value) * Math.log10(1 + Math.abs(value) / width);
     },
+    biexponential(value, options = {}) {
+      return transforms.logicle(value, options);
+    },
     normalize(value, range, scale = "linear", options = {}) {
       const fn = transforms[scale] || transforms.linear;
       const min = fn(range[0], options);

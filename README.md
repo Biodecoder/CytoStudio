@@ -22,7 +22,7 @@ Then visit `http://localhost:5178`.
 - Experiment browser supports sample grouping by dragging one sample onto another sample's group.
 - Manual gate tool selection, gate creation, gate hierarchy, boolean-gate scaffold, backgating/live-linking messaging, and live statistics.
 - Gate geometry evaluation for rectangle, polygon/lasso, ellipse, quadrant, and histogram interval gates, with recursive parent-to-child population counts based on active sample events.
-- Shared axis transform module for linear, log, logicle-like, and arcsinh transforms, with inspector controls for log floor, logicle width, and arcsinh cofactor.
+- Shared axis transform module for linear, log, logicle / biexponential, and arcsinh transforms, with inspector controls for log floor, transform width, arcsinh cofactor, and auto-tuned defaults from the active parameter range/event preview.
 - Histograms now bin active event data through the selected axis transform instead of drawing fixed placeholder curves.
 - Statistics table, CSV export, compensation matrix, spillover QC grid, spectral unmixing scaffold, high-dimensional cluster explorer scaffold, figure layout, reproducible pipeline view, workspace sharing surface, onboarding-ready empty/import states, and gated clinical-mode concept.
 - Live population statistics include count, % parent, % total, median, mean, geometric mean, robust CV, percentiles, CSV export, clipboard copy, and a CD4/CD8 derived-parameter workflow.

@@ -186,8 +186,28 @@ let highDimTimer = null;
 let activeImportWorker = null;
 let activeImportReject = null;
 
-function defaultTransformSettings() {
-  return { cofactor: 150, width: 18, floor: 1 };
+function defaultTransformSettings(parameter = null, events = []) {
+  if (!parameter) return { cofactor: 150, width: 18, floor: 1 };
+  const values = events
+    .map(event => event[parameter.id])
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b);
+  const range = parameter.range || [0, 100000];
+  const low = values.length ? percentile(values, 0.01) : range[0];
+  const high = values.length ? percentile(values, 0.99) : range[1];
+  const positive = values.find(value => value > 0);
+  const span = Math.max(1, Math.abs(high - low), Math.abs(range[1] - range[0]));
+  const negativeTail = Math.abs(Math.min(low, range[0], 0));
+  return {
+    cofactor: Math.round(Math.max(5, Math.min(10000, span / 500))),
+    width: Math.round(Math.max(1, Math.min(1000, negativeTail || span / 4096))),
+    floor: Math.max(0.0001, positive || 1)
+  };
+}
+
+function defaultTransformSettingsForAxis(plotConfig, axis) {
+  const parameter = param(axis === "x" ? plotConfig.x : plotConfig.y);
+  return defaultTransformSettings(parameter, activeEvents());
 }
 
 function rand(seed) {
@@ -396,7 +416,7 @@ function normalize(value, parameter, scale, options = {}) {
 }
 
 function axisTransformOptions(plotConfig, axis) {
-  return plotConfig[axis === "x" ? "transformX" : "transformY"] || defaultTransformSettings();
+  return plotConfig[axis === "x" ? "transformX" : "transformY"] || defaultTransformSettingsForAxis(plotConfig, axis);
 }
 
 function toast(message) {
@@ -1014,7 +1034,7 @@ function renderInspector() {
 }
 
 function scaleOptions(active) {
-  return ["linear", "log", "logicle", "arcsinh"].map(v => `<option ${active === v ? "selected" : ""}>${v}</option>`).join("");
+  return ["linear", "log", "logicle", "biexponential", "arcsinh"].map(v => `<option ${active === v ? "selected" : ""}>${v}</option>`).join("");
 }
 
 function transformControls(axisLabel, scale, values = defaultTransformSettings()) {
@@ -1022,7 +1042,7 @@ function transformControls(axisLabel, scale, values = defaultTransformSettings()
   if (scale === "arcsinh") {
     return `<label class="field"><span>${axisLabel} Cofactor</span><input type="number" min="1" max="10000" step="25" value="${values.cofactor ?? 150}" data-transform-axis="${axis}" data-transform-key="cofactor"></label>`;
   }
-  if (scale === "logicle") {
+  if (scale === "logicle" || scale === "biexponential") {
     return `<label class="field"><span>${axisLabel} Width</span><input type="number" min="1" max="1000" step="1" value="${values.width ?? 18}" data-transform-axis="${axis}" data-transform-key="width"></label>`;
   }
   if (scale === "log") {
@@ -2339,8 +2359,8 @@ function adoptImportedParameters(sample) {
     state.plots[0].y = sample.parameters[1].id;
     state.plots[0].scaleX = sample.parameters[0].scale;
     state.plots[0].scaleY = sample.parameters[1].scale;
-    state.plots[0].transformX = defaultTransformSettings();
-    state.plots[0].transformY = defaultTransformSettings();
+    state.plots[0].transformX = defaultTransformSettings(sample.parameters[0], sample.parsedEvents || []);
+    state.plots[0].transformY = defaultTransformSettings(sample.parameters[1], sample.parsedEvents || []);
     state.plots[0].title = `${sample.parameters[0].raw} vs ${sample.parameters[1].raw}`;
   }
 }
@@ -2424,7 +2444,7 @@ function bindEvents() {
     if (transformAxis && transformKey) {
       const p = plot(state.selectedPlot);
       const target = transformAxis === "x" ? "transformX" : "transformY";
-      p[target] = { ...defaultTransformSettings(), ...(p[target] || {}), [transformKey]: Number(event.target.value) };
+      p[target] = { ...defaultTransformSettingsForAxis(p, transformAxis), ...(p[target] || {}), [transformKey]: Number(event.target.value) };
       addHistory(`Adjusted ${transformAxis.toUpperCase()} ${transformKey} to ${event.target.value}`);
       render();
       return;
@@ -2471,8 +2491,8 @@ function bindEvents() {
     const p = plot(state.selectedPlot);
     p[key] = event.target.value || null;
     if (key === "type" && event.target.value === "histogram") p.y = null;
-    if (key === "scaleX") p.transformX = { ...defaultTransformSettings(), ...(p.transformX || {}) };
-    if (key === "scaleY") p.transformY = { ...defaultTransformSettings(), ...(p.transformY || {}) };
+    if (key === "scaleX") p.transformX = defaultTransformSettingsForAxis(p, "x");
+    if (key === "scaleY") p.transformY = defaultTransformSettingsForAxis(p, "y");
     addHistory(`Updated plot ${key} to ${event.target.value || "none"}`);
     render();
   });
@@ -2513,8 +2533,8 @@ function bindEvents() {
       const p = plot(state.selectedPlot);
       p.scaleX = param(p.x).scale;
       p.scaleY = p.y ? param(p.y).scale : "linear";
-      p.transformX = defaultTransformSettings();
-      p.transformY = defaultTransformSettings();
+      p.transformX = defaultTransformSettingsForAxis(p, "x");
+      p.transformY = defaultTransformSettingsForAxis(p, "y");
       addHistory("Reset axis scaling to defaults");
       render();
     }
