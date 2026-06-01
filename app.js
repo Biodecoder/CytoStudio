@@ -149,7 +149,11 @@ const state = {
     shortcutsVisible: false
   },
   accessibility: {
-    contrast: localStorage.getItem("cyto.contrast") === "1"
+    contrast: localStorage.getItem("cyto.contrast") === "1",
+    keyboardMode: false,
+    performanceMode: true,
+    lastError: "none",
+    screenReaderStatus: "Ready"
   },
   clinical: {
     enabled: false,
@@ -540,6 +544,7 @@ function axisTransformOptions(plotConfig, axis) {
 }
 
 function toast(message) {
+  state.accessibility.screenReaderStatus = message;
   const el = document.getElementById("toast");
   el.textContent = message;
   el.classList.add("show");
@@ -591,13 +596,19 @@ function renderSamples() {
   const host = document.getElementById("sampleList");
   const q = document.getElementById("sampleSearch").value.toLowerCase();
   host.innerHTML = "";
-  state.samples.filter(s => s.name.toLowerCase().includes(q)).forEach((sample, idx) => {
+  const matches = state.samples.filter(s => s.name.toLowerCase().includes(q));
+  if (!matches.length) {
+    host.innerHTML = `<div class="empty-note" role="status"><strong>No samples match</strong><span>Clear search, drop FCS files, or reopen bundled sample data from onboarding.</span></div>`;
+    return;
+  }
+  matches.forEach((sample, idx) => {
     const row = document.createElement("button");
     row.className = `row ${sample.id === state.selectedSample ? "active" : ""}`;
     row.draggable = true;
     const parsedBadge = sample.metadataOnly ? " · metadata only" : (sample.parsed ? " · event preview" : " · demo");
     const templateBadge = sampleTemplateLabel(sample);
-    row.innerHTML = `<span class="dot" style="background:${colors[idx % colors.length]}"></span><span>${sample.name}<br><small>${sample.group} · ${sample.metadata.instrument}${parsedBadge}</small></span><span class="count">${fmt(sample.events)}${templateBadge ? `<br><em class="${templateBadge.className}">${templateBadge.label}</em>` : ""}</span>`;
+    row.setAttribute("aria-label", `${sample.name}, ${sample.group}, ${fmt(sample.events)} events`);
+    row.innerHTML = `<span class="dot pattern-${idx % 4}" style="background:${colors[idx % colors.length]}">${idx + 1}</span><span>${sample.name}<br><small>${sample.group} · ${sample.metadata.instrument}${parsedBadge}</small></span><span class="count">${fmt(sample.events)}${templateBadge ? `<br><em class="${templateBadge.className}">${templateBadge.label}</em>` : ""}</span>`;
     row.addEventListener("click", () => {
       state.selectedSample = sample.id;
       addHistory(`Selected sample ${sample.name}`);
@@ -628,7 +639,8 @@ function renderTree() {
     row.className = `row depth-${Math.min(depth, 4)} ${pop.id === state.selectedPopulation ? "active" : ""}`;
     row.draggable = true;
     const count = populationCount(pop);
-    row.innerHTML = `<span>${children(pop.id).length ? "▾" : ""}</span><span class="dot" style="background:${pop.color}"></span><span>${pop.name}</span><span class="count">${count > 999999 ? (count / 1000000).toFixed(2) + "M" : fmt(count)}</span>`;
+    row.setAttribute("aria-label", `${pop.name}, ${fmt(count)} events`);
+    row.innerHTML = `<span>${children(pop.id).length ? "▾" : ""}</span><span class="dot pattern-${depth % 4}" style="background:${pop.color}">${depth + 1}</span><span>${pop.name}</span><span class="count">${count > 999999 ? (count / 1000000).toFixed(2) + "M" : fmt(count)}</span>`;
     row.addEventListener("click", () => {
       state.selectedPopulation = pop.id;
       state.selectedPlot = state.plots.find(p => p.population === pop.id)?.id || state.selectedPlot;
@@ -658,7 +670,8 @@ function renderStatus() {
   document.getElementById("statusEvents").textContent = `Events: ${fmt(sample.events)}`;
   document.getElementById("statusSample").textContent = `Sample: ${sample.name}`;
   document.getElementById("statusPopulation").textContent = `Selected: ${pop.name} (${fmt(populationCount(pop))} events)`;
-  document.getElementById("statusPipeline").textContent = `Pipeline: ${pipelineRecords().length} steps`;
+  const largeSampleCount = state.samples.filter(item => item.events > 5_000_000).length;
+  document.getElementById("statusPipeline").textContent = `Pipeline: ${pipelineRecords().length} steps · ${largeSampleCount} large sample${largeSampleCount === 1 ? "" : "s"} ready`;
 }
 
 function renderView() {
@@ -685,7 +698,7 @@ function renderView() {
 }
 
 function coachMarksHTML() {
-  return `<div class="coach-marks" aria-label="Guided workflow tips"><div><strong>1 Draw a gate</strong><span>Choose Rect, Poly, Ellipse, Quad, Interval, or Lasso in the toolbar.</span></div><div><strong>2 View population</strong><span>Select a child population in the hierarchy to live-filter plots.</span></div><div><strong>3 Build statistics</strong><span>Open Statistics for table export and derived markers.</span></div></div>`;
+  return `<div class="coach-marks" aria-label="Guided workflow tips"><div><strong>1 Draw a gate</strong><span>Choose a gate tool or press G for a starter rectangle.</span></div><div><strong>2 View population</strong><span>Select a child population; count changes are announced in the status bar.</span></div><div><strong>3 Build statistics</strong><span>Press S for the table, then export or copy results.</span></div><div><strong>4 Replay/export</strong><span>Press P for the reproducible pipeline and report package.</span></div></div>`;
 }
 
 function renderOnboarding() {
@@ -696,23 +709,23 @@ function renderOnboarding() {
     return;
   }
   const steps = [
-    { title: "Welcome to CytoStudio", body: "Start with bundled sample data, then draw a gate, inspect a population, and export statistics.", action: "start-sample-conventional", label: "Open conventional sample" },
+    { title: "Welcome to CytoStudio", body: "Start with bundled sample data, then draw a gate, inspect a population, and export statistics in the first few minutes.", action: "start-sample-conventional", label: "Open conventional sample" },
     { title: "Try spectral and high-parameter data", body: "Load the spectral panel path, run unmixing or clustering, and compare populations without bringing your own files yet.", action: "start-sample-spectral", label: "Open spectral sample" },
-    { title: "Keyboard and accessibility", body: "Use Command-K for search, ? for shortcuts, G to create a gate, S for statistics, and high-contrast mode for color-safe review.", action: "toggle-contrast", label: "Toggle high contrast" }
+    { title: "Accessible by default", body: "Every common workflow has a keyboard path, visible focus, status announcements, and non-color labels for samples, populations, and gates.", action: "toggle-contrast", label: "Toggle high contrast" }
   ];
   const step = steps[state.onboarding.step] || steps[0];
   host.innerHTML = `<div class="onboarding-backdrop" role="dialog" aria-modal="true" aria-label="CytoStudio onboarding"><div class="onboarding-card"><div class="onboarding-art" aria-hidden="true"><span></span><span></span><span></span></div><h2>${step.title}</h2><p>${step.body}</p><div class="button-row"><button class="primary" data-action="${step.action}">${step.label}</button><button class="secondary" data-action="next-onboarding">Next</button><button class="secondary" data-action="show-shortcuts">Shortcuts</button><button class="secondary" data-action="close-onboarding">Done</button></div></div></div>${shortcuts}`;
 }
 
 function shortcutSheetHTML() {
-  return `<div class="shortcut-sheet" role="dialog" aria-label="Keyboard shortcuts"><h3>Keyboard Shortcuts</h3><div class="report-list"><div class="kv-row"><span>Command-K</span><strong>Command palette</strong></div><div class="kv-row"><span>?</span><strong>Toggle this sheet</strong></div><div class="kv-row"><span>G</span><strong>Create gate</strong></div><div class="kv-row"><span>S</span><strong>Statistics</strong></div><div class="kv-row"><span>F</span><strong>Figure editor</strong></div><div class="kv-row"><span>H</span><strong>High contrast</strong></div></div><button class="primary" data-action="show-shortcuts">Close</button></div>`;
+  return `<div class="shortcut-sheet" role="dialog" aria-label="Keyboard shortcuts"><h3>Keyboard Shortcuts</h3><div class="report-list"><div class="kv-row"><span>Command-K</span><strong>Command palette</strong></div><div class="kv-row"><span>?</span><strong>Toggle this sheet</strong></div><div class="kv-row"><span>/</span><strong>Search samples</strong></div><div class="kv-row"><span>G</span><strong>Create gate</strong></div><div class="kv-row"><span>S</span><strong>Statistics</strong></div><div class="kv-row"><span>B</span><strong>Batch review</strong></div><div class="kv-row"><span>U</span><strong>High-dimensional view</strong></div><div class="kv-row"><span>F</span><strong>Figure editor</strong></div><div class="kv-row"><span>P</span><strong>Pipeline</strong></div><div class="kv-row"><span>W</span><strong>Workspace sharing</strong></div><div class="kv-row"><span>H</span><strong>High contrast</strong></div><div class="kv-row"><span>Esc</span><strong>Close dialogs</strong></div></div><button class="primary" data-action="show-shortcuts">Close</button></div>`;
 }
 
 function plotCardHTML(p) {
   const x = param(p.x).label;
   const y = p.y ? param(p.y).label : "Frequency";
   return `
-    <article class="plot-card" data-plot="${p.id}">
+    <article class="plot-card" data-plot="${p.id}" role="group" aria-label="${p.title}: ${x} by ${y}">
       <header class="plot-head">
         <strong>${p.title}</strong><span>${x} / ${y}</span><span class="spacer"></span>
         <button data-plot-action="zoom">＋</button><button data-plot-action="overlay">◎</button><button data-plot-action="menu">⋮</button>
@@ -731,9 +744,10 @@ function gateSVG(plotId, sample = selectedSample()) {
     const selected = gate.id === state.selectedGate || gate.population === state.selectedPopulation;
     const pop = population(gate.population);
     const color = pop?.color || "#31e6d0";
-    const shapeStyle = `style="stroke:${color};fill:${colorToRGBA(color, selected ? 0.20 : 0.12)}"`;
+    const dash = gateDashPattern(gate);
+    const shapeStyle = `style="stroke:${color};fill:${colorToRGBA(color, selected ? 0.20 : 0.12)}" stroke-dasharray="${dash}"`;
     const handles = selected ? gateHandlesSVG(gate, color) : "";
-    const attrs = `data-gate-id="${gate.id}" data-gate-action="move" ${shapeStyle}`;
+    const attrs = `data-gate-id="${gate.id}" data-gate-action="move" aria-label="${escapeHTML(pop?.name || gate.label)} gate" ${shapeStyle}`;
     const shapeClass = `gate-shape${selected ? " selected" : ""}${gate.justCreated ? " creating" : ""}`;
     if (g.type === "rectangle") {
       return `<rect class="${shapeClass}" ${attrs} x="${g.x1 * 100}%" y="${g.y1 * 100}%" width="${(g.x2 - g.x1) * 100}%" height="${(g.y2 - g.y1) * 100}%"></rect><text class="gate-label" x="${(g.x1 + 0.02) * 100}%" y="${(g.y1 + 0.08) * 100}%">${escapeHTML(g.label)}</text>${handles}`;
@@ -753,6 +767,11 @@ function gateSVG(plotId, sample = selectedSample()) {
     }
     return "";
   }).join("");
+}
+
+function gateDashPattern(gate) {
+  const index = Math.max(0, state.gates.findIndex(item => item.id === gate.id));
+  return ["0", "5 3", "2 3", "8 3 2 3"][index % 4];
 }
 
 function gateHandlesSVG(gate, color = "#31e6d0") {
@@ -905,6 +924,12 @@ function drawScatter(ctx, width, height, pad, p) {
 }
 
 function densityColor(t) {
+  if (state.accessibility.contrast) {
+    if (t < 0.28) return `rgba(92,160,255,${0.45 + t})`;
+    if (t < 0.55) return `rgba(49,230,208,${0.45 + t})`;
+    if (t < 0.82) return `rgba(255,228,92,${0.35 + t})`;
+    return `rgba(255,255,255,${0.25 + t})`;
+  }
   if (t < 0.28) return `rgba(43,91,180,${0.4 + t})`;
   if (t < 0.55) return `rgba(37,207,197,${0.45 + t})`;
   if (t < 0.82) return `rgba(218,221,66,${0.35 + t})`;
@@ -2216,6 +2241,7 @@ function endGateDrag() {
 async function importFiles(files) {
   const fileList = [...files].filter(file => !file.name || file.name.toLowerCase().endsWith(".fcs")).slice(0, 8);
   if (!fileList.length) {
+    state.accessibility.lastError = "Drop contained no FCS files";
     toast("No FCS files found in the drop");
     return;
   }
@@ -2246,6 +2272,7 @@ async function importFiles(files) {
       imported.push(sampleFromParsedFCS(file.name, parsed, importPlan));
     } catch (error) {
       if (state.importJob.cancelled || /cancelled/i.test(error.message)) break;
+      state.accessibility.lastError = `${file.name}: ${error.message}`;
       imported.push(fallbackSample(file.name, error, importPlan));
     }
   }
@@ -3821,24 +3848,52 @@ function bindEvents() {
     if (action === "copy-table") copyStatisticsTable();
   });
   document.addEventListener("keydown", event => {
+    state.accessibility.keyboardMode = true;
     const typing = ["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName);
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
       event.preventDefault();
       openCommandPalette();
     }
     if (typing) return;
+    const key = event.key.toLowerCase();
     if (event.key === "?") toggleShortcuts();
+    if (event.key === "/") {
+      event.preventDefault();
+      document.getElementById("sampleSearch").focus();
+      toast("Sample search focused");
+    }
     if (!event.metaKey && !event.ctrlKey && event.key.toLowerCase() === "g") createGate();
     if (!event.metaKey && !event.ctrlKey && event.key.toLowerCase() === "s") {
       state.activeView = "tables";
+      render();
+    }
+    if (!event.metaKey && !event.ctrlKey && key === "b") {
+      state.activeView = "batch";
+      render();
+    }
+    if (!event.metaKey && !event.ctrlKey && key === "u") {
+      state.activeView = "highdim";
       render();
     }
     if (!event.metaKey && !event.ctrlKey && event.key.toLowerCase() === "f") {
       state.activeView = "figure";
       render();
     }
+    if (!event.metaKey && !event.ctrlKey && key === "p") {
+      state.activeView = "pipeline";
+      render();
+    }
+    if (!event.metaKey && !event.ctrlKey && key === "w") {
+      state.activeView = "share";
+      render();
+    }
     if (!event.metaKey && !event.ctrlKey && event.key.toLowerCase() === "h") toggleHighContrast();
-    if (event.key === "Escape") closeCommandPalette();
+    if (event.key === "Escape") {
+      closeCommandPalette();
+      state.onboarding.visible = false;
+      state.onboarding.shortcutsVisible = false;
+      renderOnboarding();
+    }
     if (event.key === "Enter" && activeGateDraft?.type === "polygon") {
       event.preventDefault();
       finishCreatedGate(activeGateDraft.gate, "Closed polygon gate");
