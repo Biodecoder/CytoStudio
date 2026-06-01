@@ -29,7 +29,7 @@ Then visit `http://localhost:5178`.
 - Live population statistics include count, % parent, % total, median, mean, geometric mean, robust CV, percentiles, a configurable/sortable table editor with population rows or samples-as-rows pivoting, CSV/Excel-compatible export, clipboard copy, and a CD4/CD8 derived-parameter workflow.
 - Compensation matrix edits apply to the active event stream, can be assigned to a sample/group/workspace scope, parse embedded spillover keywords when present, support import and single-stain-fit proof workflows, and drive the N-by-N spillover QC grid.
 - Spectral data proof loading, reference signature import/build workflows, autofluorescence modeling, quality warnings, least-squares-style review metadata, and reviewable unmixing create named fluorophore and residual parameters for plots and statistics.
-- Gating templates can be saved from the active hierarchy, applied across a sample group, reviewed as small multiples, tailored per sample, and recomputed into a combined batch statistics table.
+- Gating templates can be saved/exported/imported from the active hierarchy, applied across a selectable sample group, reviewed as small multiples, tailored per sample, and recomputed into a combined batch statistics table.
 - High-dimensional analysis can run a sampled reproducible UMAP/t-SNE-style embedding, assign FlowSOM/graph-style clusters, color by marker, inspect a cluster heatmap, compare samples, and backgate a selected cluster into the population tree.
 - Figure layout editor supports live linked plot tiles, labels, arrows, inset plots, snapping/alignment controls, appearance controls, template saving, and browser-native export proofs.
 - Pipeline view supports timeline stepping, replay recording, report proof generation, pipeline JSON, gated FCS proof, event CSV/Parquet proof, statistics Excel-compatible export, and GatingML proof export.
@@ -62,7 +62,7 @@ These areas are represented in the UI and state model but should not be treated 
 - Full drag-and-drop table-builder UX, samples-as-rows pivoting, and native Excel export.
 - Validated compensation fitting from single-stain controls beyond the current reviewable proof workflow.
 - Validated NNLS spectral unmixing on real raw spectra and vendor-specific spectral imports.
-- Durable reusable template files, robust per-sample gate editing, group assignment UX, and large-study batch recomputation.
+- Large-study batch recomputation beyond the current local proof workflow.
 - Validated UMAP/t-SNE/FlowSOM numerical algorithms, graph community detection, worker-backed execution, and reproducibility tests.
 - High-fidelity PDF/TIFF/vector export, full drag-resize handles, print color management, and per-plot export packaging.
 - Validated PDF generation, binary FCS writing, Parquet/Excel writers, GatingML conformance, and FlowJo / Cytobank round-trip interoperability.

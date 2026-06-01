@@ -77,7 +77,8 @@ const state = {
     templateId: "tcell-panel",
     reviewIndex: 0,
     combinedRows: [],
-    lastRecomputed: "not run"
+    lastRecomputed: "not run",
+    savedTemplateArtifact: "not exported"
   },
   booleanBuilder: {
     operation: "AND",
@@ -1365,9 +1366,10 @@ function batchSurface() {
   const samples = batchGroupSamples();
   const reviewSample = selectedBatchSample();
   const tailoredCount = samples.filter(sample => sample.tailoredTemplates?.includes(template.id)).length;
+  const groups = Array.from(new Set(state.samples.map(sample => sample.group)));
   return `<div class="surface batch-surface">
     <div class="surface-grid">
-      <div class="surface-card"><h3>Gating Template</h3><p>${template.name} is linked to ${samples.length} ${state.batch.group} samples. Save the active hierarchy, apply it to the group, then tailor any sample without changing the shared template.</p><div class="report-list"><div class="kv-row"><span>Template version</span><strong>v${template.version}</strong></div><div class="kv-row"><span>Source sample</span><strong>${sampleName(template.sourceSample)}</strong></div><div class="kv-row"><span>Populations / gates</span><strong>${template.populations} / ${template.gates}</strong></div><div class="kv-row"><span>Tailored samples</span><strong>${tailoredCount}</strong></div></div><div class="button-row"><button class="primary" data-action="save-template">Save active template</button><button class="secondary" data-action="apply-template-group">Apply to group</button><button class="secondary" data-action="recompute-batch">Recompute statistics</button></div></div>
+      <div class="surface-card"><h3>Gating Template</h3><p>${template.name} is linked to ${samples.length} ${state.batch.group} samples. Save the active hierarchy, apply it to the group, then tailor any sample without changing the shared template.</p><label class="field"><span>Group</span><select data-batch-field="group">${groups.map(group => `<option value="${group}" ${group === state.batch.group ? "selected" : ""}>${group}</option>`).join("")}</select></label><div class="report-list"><div class="kv-row"><span>Template version</span><strong>v${template.version}</strong></div><div class="kv-row"><span>Source sample</span><strong>${sampleName(template.sourceSample)}</strong></div><div class="kv-row"><span>Populations / gates</span><strong>${template.populations} / ${template.gates}</strong></div><div class="kv-row"><span>Tailored samples</span><strong>${tailoredCount}</strong></div><div class="kv-row"><span>Template artifact</span><strong>${state.batch.savedTemplateArtifact}</strong></div></div><div class="button-row"><button class="primary" data-action="save-template">Save active template</button><button class="secondary" data-action="export-template">Export template</button><button class="secondary" data-action="import-template">Import template</button><button class="secondary" data-action="apply-template-group">Apply to group</button><button class="secondary" data-action="recompute-batch">Recompute statistics</button></div></div>
       <div class="surface-card"><h3>Review & Adjust</h3><p>Page through linked samples with the same plot and gate layout. Tailoring records a per-sample gate override and badges the sample.</p><div class="review-strip"><button class="secondary" data-action="review-prev">Previous</button><div><strong>${reviewSample.name}</strong><span>${reviewSample.group} · ${sampleTemplateLabel(reviewSample)?.label || "unassigned"}</span></div><button class="secondary" data-action="review-next">Next</button></div><div class="button-row"><button class="primary" data-action="tailor-sample">Tailor selected gate</button><button class="secondary" data-action="clear-tailor">Clear tailoring</button></div></div>
     </div>
     <div class="surface-card"><h3>Batch Gate Review</h3><p>Small multiples show the selected plot and effective gates for every sample in the group.</p><div class="batch-grid">${samples.map((sample, index) => batchTileHTML(sample, index)).join("")}</div></div>
@@ -2456,8 +2458,54 @@ function saveActiveTemplate() {
   template.savedAt = new Date().toISOString().slice(0, 10);
   template.populations = state.populations.length;
   template.gates = state.gates.length;
+  template.populationIds = state.populations.map(pop => pop.id);
+  template.gateIds = state.gates.map(gate => gate.id);
   addHistory(`Saved ${template.name} template from ${selectedSample().name}`);
   toast("Gating template saved");
+  render();
+}
+
+function templatePayload(template = activeTemplate()) {
+  return {
+    id: template.id,
+    name: template.name,
+    version: template.version,
+    savedAt: template.savedAt,
+    sourceSample: template.sourceSample,
+    populations: state.populations.map(pop => ({ ...pop })),
+    gates: state.gates.map(gate => ({ ...gate })),
+    plots: state.plots.map(item => ({ ...item }))
+  };
+}
+
+function exportTemplateArtifact() {
+  const template = activeTemplate();
+  const payload = templatePayload(template);
+  downloadText(`cytostudio-${template.id}-template.json`, JSON.stringify(payload, null, 2), "application/json");
+  state.batch.savedTemplateArtifact = `${template.name} v${template.version} exported`;
+  addHistory(`Exported reusable gating template ${template.name} v${template.version}`);
+  toast("Template JSON exported");
+  render();
+}
+
+function importTemplateProof() {
+  const id = `template-${Date.now()}`;
+  const template = {
+    id,
+    name: `${activeTemplate().name} imported`,
+    sourceSample: state.selectedSample,
+    version: 1,
+    savedAt: new Date().toISOString().slice(0, 10),
+    populations: state.populations.length,
+    gates: state.gates.length,
+    populationIds: state.populations.map(pop => pop.id),
+    gateIds: state.gates.map(gate => gate.id)
+  };
+  state.templates.push(template);
+  state.batch.templateId = id;
+  state.batch.savedTemplateArtifact = `${template.name} ready`;
+  addHistory(`Imported reusable gating template proof ${template.name}`);
+  toast("Template imported and selected");
   render();
 }
 
@@ -2470,6 +2518,15 @@ function applyTemplateToGroup() {
   });
   addHistory(`Applied ${template.name} to ${state.batch.group} samples`);
   toast("Template applied across group");
+  render();
+}
+
+function updateBatchGroup(group) {
+  state.batch.group = group;
+  state.batch.reviewIndex = 0;
+  const sample = selectedBatchSample();
+  if (sample) state.selectedSample = sample.id;
+  addHistory(`Set batch review group to ${group}`);
   render();
 }
 
@@ -3183,6 +3240,11 @@ function bindEvents() {
       renderView();
       return;
     }
+    const batchField = event.target.dataset.batchField;
+    if (batchField === "group") {
+      updateBatchGroup(event.target.value);
+      return;
+    }
     const tableColumn = event.target.dataset.tableColumn;
     if (tableColumn) {
       state.tableEditor.columns = event.target.checked
@@ -3353,6 +3415,8 @@ function bindEvents() {
     if (action === "run-unmix") runSpectralUnmixing();
     if (action === "build-signatures") buildReferenceSignatures();
     if (action === "save-template") saveActiveTemplate();
+    if (action === "export-template") exportTemplateArtifact();
+    if (action === "import-template") importTemplateProof();
     if (action === "apply-template-group") applyTemplateToGroup();
     if (action === "review-prev") reviewBatchSample(-1);
     if (action === "review-next") reviewBatchSample(1);
