@@ -32,6 +32,7 @@ Then visit `http://localhost:5178`.
 - Pipeline view supports timeline stepping, replay recording, report proof generation, pipeline JSON, gated FCS proof, event CSV/Parquet proof, statistics Excel-compatible export, and GatingML proof export.
 - Workspace sharing view saves raw-data-referencing workspace JSON, autosaves recovery state, exports share packages, records audit/change logs, and provides GatingML/FlowJo/Cytobank import proof actions.
 - Onboarding overlay, bundled conventional/spectral sample launch paths, coach marks, keyboard cheat sheet, high-contrast mode, and direct shortcuts support first-run exploration and accessibility.
+- Optional clinical mode remains off by default and adds role configuration, locked/finalized analysis state, electronic signature proof, immutable audit preview, retention/access settings, and compliance export proof without making validation claims.
 
 ## Architecture choice
 
@@ -61,7 +62,7 @@ These areas are represented in the UI and state model but should not be treated 
 - Validated PDF generation, binary FCS writing, Parquet/Excel writers, GatingML conformance, and FlowJo / Cytobank round-trip interoperability.
 - Robust native open/save dialogs, file locks, conflict resolution, real shared-location sync, and production FlowJo/Cytobank migration tooling.
 - Full VoiceOver audit, formal color-contrast certification, and large-file memory/performance profiling on production datasets.
-- 21 CFR Part 11 or clinical compliance.
+- 21 CFR Part 11 validation, lab SOP/legal review, production authentication, validated e-signatures, retention enforcement, and clinical compliance.
 
 ## Original blueprint package
 

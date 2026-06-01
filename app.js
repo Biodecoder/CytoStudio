@@ -107,6 +107,16 @@ const state = {
   accessibility: {
     contrast: localStorage.getItem("cyto.contrast") === "1"
   },
+  clinical: {
+    enabled: false,
+    locked: false,
+    signed: false,
+    user: "Research User",
+    role: "Research",
+    retentionYears: 7,
+    access: "local roles",
+    exportStatus: "not exported"
+  },
   pipelineCursor: null,
   samples: [
     { id: "s1", name: "PBMC Panel.fcs", events: 10432912, group: "Treatment A", status: "ready", templateId: "tcell-panel", metadata: { instrument: "Aurora CS", operator: "Core Facility", acquired: "2026-06-01", compensation: "Imported 8x8", keywords: 412 } },
@@ -1195,9 +1205,12 @@ function shareSurface() {
 }
 
 function clinicalSurface() {
+  const c = state.clinical;
   return `<div class="surface"><div class="surface-grid">
-    <div class="surface-card"><h3>Clinical Mode</h3><p>Optional compliance mode is intentionally gated and labeled as non-validated. It shows the roles, lock/finalize, immutable audit, and e-signature surfaces without claiming regulatory compliance.</p><div class="button-row"><button class="primary">Enable clinical mode</button><button class="secondary">Lock analysis</button><button class="secondary">Request e-signature</button></div></div>
-    <div class="surface-card"><h3>Compliance Export Checklist</h3><div class="warnings"><div class="warning-row good"><span>Role-based actions</span><strong>Scaffolded</strong></div><div class="warning-row good"><span>Immutable audit trail</span><strong>Visible</strong></div><div class="warning-row warn"><span>21 CFR Part 11 validation</span><strong>Not claimed</strong></div><div class="warning-row warn"><span>Legal review</span><strong>Required</strong></div></div></div>
+    <div class="surface-card"><h3>Clinical Mode</h3><p>Clinical mode is off by default and intentionally isolated from research workflows. This prototype surfaces regulated-environment controls without claiming validation or legal compliance.</p><div class="button-row"><button class="primary" data-action="enable-clinical">${c.enabled ? "Clinical mode enabled" : "Enable clinical mode"}</button><button class="secondary" data-action="lock-analysis">Lock analysis</button><button class="secondary" data-action="sign-report">E-sign report</button><button class="secondary" data-action="export-compliance">Compliance export</button></div><div class="report-list"><div class="kv-row"><span>User</span><strong>${c.user}</strong></div><div class="kv-row"><span>Role</span><strong>${c.role}</strong></div><div class="kv-row"><span>Analysis lock</span><strong>${c.locked ? "finalized" : "editable"}</strong></div><div class="kv-row"><span>Signature</span><strong>${c.signed ? "signed" : "not signed"}</strong></div></div></div>
+    <div class="surface-card"><h3>Configuration</h3><label class="field"><span>Role</span><select data-clinical-field="role"><option ${c.role === "Research" ? "selected" : ""}>Research</option><option ${c.role === "Operator" ? "selected" : ""}>Operator</option><option ${c.role === "Reviewer" ? "selected" : ""}>Reviewer</option><option ${c.role === "Administrator" ? "selected" : ""}>Administrator</option></select></label><label class="field"><span>Retention</span><input type="number" min="1" max="25" value="${c.retentionYears}" data-clinical-field="retentionYears"></label><label class="field"><span>Access</span><select data-clinical-field="access"><option ${c.access === "local roles" ? "selected" : ""}>local roles</option><option ${c.access === "directory sync" ? "selected" : ""}>directory sync</option><option ${c.access === "read-only review" ? "selected" : ""}>read-only review</option></select></label></div>
+    <div class="surface-card"><h3>Immutable Audit Trail</h3><div class="timeline-list">${state.pipeline.slice(-10).map((step, index) => `<button><strong>${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</strong><span>${c.user} · ${step}</span></button>`).join("")}</div></div>
+    <div class="surface-card"><h3>Compliance Export Checklist</h3><div class="warnings"><div class="warning-row ${c.enabled ? "good" : "warn"}"><span>Clinical mode</span><strong>${c.enabled ? "enabled" : "off"}</strong></div><div class="warning-row ${c.locked ? "good" : "warn"}"><span>Finalized analysis</span><strong>${c.locked ? "locked" : "open"}</strong></div><div class="warning-row ${c.signed ? "good" : "warn"}"><span>Electronic signature</span><strong>${c.signed ? "captured" : "needed"}</strong></div><div class="warning-row good"><span>Audit trail</span><strong>${state.pipeline.length} entries</strong></div><div class="warning-row warn"><span>21 CFR Part 11 validation</span><strong>not claimed</strong></div><div class="warning-row warn"><span>Lab SOP/legal review</span><strong>required</strong></div></div></div>
   </div></div>`;
 }
 
@@ -1980,6 +1993,48 @@ function toggleHighContrast() {
   render();
 }
 
+function enableClinicalMode() {
+  state.clinical.enabled = true;
+  state.clinical.user = "Clinical Reviewer";
+  state.clinical.role = state.clinical.role === "Research" ? "Reviewer" : state.clinical.role;
+  addHistory("Enabled optional clinical mode for this installation");
+  toast("Clinical mode enabled for review");
+  render();
+}
+
+function lockAnalysis() {
+  if (!state.clinical.enabled) enableClinicalMode();
+  state.clinical.locked = true;
+  addHistory("Locked and finalized analysis; future changes require versioning");
+  toast("Analysis locked");
+  render();
+}
+
+function signReport() {
+  if (!state.clinical.enabled) enableClinicalMode();
+  state.clinical.signed = true;
+  addHistory(`Electronic signature captured from ${state.clinical.user} (${state.clinical.role})`);
+  toast("Electronic signature captured");
+  render();
+}
+
+function exportCompliancePackage() {
+  const payload = {
+    mode: "clinical-proof",
+    validationClaim: "none",
+    user: state.clinical.user,
+    role: state.clinical.role,
+    locked: state.clinical.locked,
+    signed: state.clinical.signed,
+    retentionYears: state.clinical.retentionYears,
+    auditTrail: state.pipeline
+  };
+  downloadText("cytostudio-compliance-export.json", JSON.stringify(payload, null, 2), "application/json");
+  state.clinical.exportStatus = "exported";
+  addHistory("Exported compliance-oriented package proof with no validation claim");
+  render();
+}
+
 function runSpectralUnmixing() {
   ensureSpectralParameters();
   state.spectral.enabled = true;
@@ -2137,6 +2192,13 @@ function bindEvents() {
       render();
       return;
     }
+    const clinicalField = event.target.dataset.clinicalField;
+    if (clinicalField) {
+      state.clinical[clinicalField] = event.target.type === "number" ? Number(event.target.value) : event.target.value;
+      addHistory(`Updated clinical ${clinicalField} setting`);
+      render();
+      return;
+    }
     const key = event.target.dataset.editPlot;
     if (!key) return;
     const p = plot(state.selectedPlot);
@@ -2237,6 +2299,10 @@ function bindEvents() {
     if (action === "close-onboarding") closeOnboarding();
     if (action === "show-shortcuts") toggleShortcuts();
     if (action === "toggle-contrast") toggleHighContrast();
+    if (action === "enable-clinical") enableClinicalMode();
+    if (action === "lock-analysis") lockAnalysis();
+    if (action === "sign-report") signReport();
+    if (action === "export-compliance") exportCompliancePackage();
     if (action === "apply-comp") {
       const comp = currentCompensation();
       comp.enabled = true;
