@@ -11,6 +11,7 @@ This audit maps the current prototype to the requested prompt sequence. The app 
 - Original blueprint preserved: `blueprint-catalog.html`, `CytoStudio-Blueprint-and-Codex-Prompts.md`, and `prompts/`.
 - Visual concept asset: `assets/design/cytostudio-workspace-concept.png`.
 - FCS foundation: `fcs-core.js` plus `tests/fcs-core.test.cjs`.
+- Worker import adapter: `fcs-import-worker.js`.
 - Verification performed: JavaScript syntax check, local HTTP 200 check, Playwright desktop/mobile screenshots, Command-K check, tab-surface checks, and mobile overflow check.
 
 ## Prompt-by-prompt status
@@ -19,7 +20,7 @@ This audit maps the current prototype to the requested prompt sequence. The app 
 |---|---|---|
 | 00 Vision / guardrails | Prototype complete | Three-pane app shell, state store, README architecture choice, light/dark support. Tauri/Rust/Arrow are documented next steps. |
 | 01 Shell / navigation / design system | Prototype complete | Left sample rail, population tree, center canvas, inspector, toolbar, status bar, Command-K, responsive layout, persisted theme. Panel resizing/collapse is only lightly scaffolded. |
-| 02 FCS import / experiment manager | Prototype partial | Drag-drop and file-picker imports now parse FCS 3.0/3.1 header/TEXT metadata, parameter labels, common numeric event data, keyword counts, and sampled events through `fcs-core.js`. Large-file memory mapping, worker import, grouping drag-drop, and broad fixture coverage remain. |
+| 02 FCS import / experiment manager | Prototype partial | Drag-drop and file-picker imports now parse FCS 3.0/3.1 header/TEXT metadata, parameter labels, common numeric event data, keyword counts, sampled events, and spillover through `fcs-core.js`, with `fcs-import-worker.js` moving served-local parsing off the UI thread and falling back to direct parsing when workers are unavailable. Large-file memory mapping, cancellation UI, grouping drag-drop, and broad public fixture coverage remain. |
 | 03 Transforms / scaling | Prototype partial | Linear, log, arcsinh, and logicle-like transforms now live in shared tested code, expose per-axis floor/width/cofactor controls, drive scatter/density normalization, and bin histograms from active event data. Reference parity with `flowCore`, canonical tick semantics, and auto-default tuning remain. |
 | 04 Plot canvas | Prototype complete | Canvas scatter, density, histogram, UMAP-style plots, legends, overlays, zoom gesture capture, publication-style chrome. GPU/datashader-scale rendering is not yet implemented. |
 | 05 Manual gating | Prototype partial | Toolbar tools, gate creation, rectangle/polygon/lasso/ellipse/quadrant/interval overlays, labels, hierarchy updates, keyboard nudge feedback, and normalized gate geometry evaluation. Full vertex editing and robust boolean geometry remain. |
@@ -37,4 +38,4 @@ This audit maps the current prototype to the requested prompt sequence. The app 
 
 ## Next best slice
 
-The best next build slice is to deepen Prompt 02 into a robust import pipeline: move parsing into a worker, add cancellation and byte/event progress, collect real public FCS fixtures, and expand compatibility tests for spillover keywords, mixed byte orders, integer bit widths, and large files.
+The best next build slice is to continue hardening Prompt 02: add cancellation UI, byte/event progress, public FCS fixture coverage, mixed byte-order fixtures, integer bit-width fixtures, and large-file memory-map strategy.

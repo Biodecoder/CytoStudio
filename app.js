@@ -1384,32 +1384,63 @@ async function importFiles(files) {
     toast("No FCS files found in the drop");
     return;
   }
-  let progress = 0;
-  const timer = setInterval(() => {
-    progress += 16;
-    toast(`Importing FCS data ${Math.min(progress, 96)}%`);
-  }, 120);
 
   const imported = [];
-  for (const file of fileList) {
+  for (let index = 0; index < fileList.length; index++) {
+    const file = fileList[index];
+    state.importProgress = Math.round((index / fileList.length) * 100);
+    toast(`Importing ${file.name || "FCS file"} ${state.importProgress}%`);
     try {
-      const parsed = fcsCore.parseFCS(await file.arrayBuffer(), { maxEvents: 25000 });
+      const parsed = await parseFCSFile(file, { maxEvents: 25000 });
       imported.push(sampleFromParsedFCS(file.name, parsed));
     } catch (error) {
       imported.push(fallbackSample(file.name, error));
     }
   }
 
-  clearInterval(timer);
+  state.importProgress = 100;
   imported.forEach(sample => state.samples.push(sample));
   const firstParsed = imported.find(sample => sample.parsed && sample.parameters?.length);
   if (firstParsed) {
     state.selectedSample = firstParsed.id;
     adoptImportedParameters(firstParsed);
   }
-  addHistory(`Imported ${imported.length} FCS file(s) through local parser`);
+  addHistory(`Imported ${imported.length} FCS file(s) through worker-backed parser`);
   toast(firstParsed ? "FCS import complete with parsed events" : "Import finished with metadata fallback");
   render();
+}
+
+function parseFCSFile(file, options) {
+  if (!window.Worker) return file.arrayBuffer().then(buffer => fcsCore.parseFCS(buffer, options));
+  return new Promise(async (resolve, reject) => {
+    let worker;
+    try {
+      worker = new Worker("fcs-import-worker.js");
+    } catch (error) {
+      try {
+        resolve(fcsCore.parseFCS(await file.arrayBuffer(), options));
+      } catch (fallbackError) {
+        reject(fallbackError);
+      }
+      return;
+    }
+    const id = `${Date.now()}-${Math.random()}`;
+    worker.onmessage = event => {
+      worker.terminate();
+      if (event.data.ok) resolve(event.data.parsed);
+      else reject(new Error(event.data.error));
+    };
+    worker.onerror = async error => {
+      worker.terminate();
+      try {
+        resolve(fcsCore.parseFCS(await file.arrayBuffer(), options));
+      } catch (fallbackError) {
+        reject(fallbackError);
+      }
+    };
+    const buffer = await file.arrayBuffer();
+    worker.postMessage({ id, name: file.name, buffer, maxEvents: options.maxEvents }, [buffer]);
+  });
 }
 
 function fallbackSample(name, error) {
