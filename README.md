@@ -26,7 +26,7 @@ Then visit `http://localhost:5178`.
 - Shared axis transform module for linear, log, logicle / biexponential, and arcsinh transforms, with inspector controls for log floor, transform width, arcsinh cofactor, auto-tuned defaults from the active parameter range/event preview, and scale-aware axis ticks.
 - Histograms now bin active event data through the selected axis transform instead of drawing fixed placeholder curves.
 - Statistics table, CSV export, compensation matrix, spillover QC grid, spectral unmixing scaffold, high-dimensional cluster explorer scaffold, figure layout, reproducible pipeline view, workspace sharing surface, onboarding-ready empty/import states, and gated clinical-mode concept.
-- Live population statistics include count, % parent, % total, median, mean, geometric mean, robust CV, percentiles, CSV export, clipboard copy, and a CD4/CD8 derived-parameter workflow.
+- Live population statistics include count, % parent, % total, median, mean, geometric mean, robust CV, percentiles, a configurable/sortable table editor with population rows or samples-as-rows pivoting, CSV/Excel-compatible export, clipboard copy, and a CD4/CD8 derived-parameter workflow.
 - Compensation matrix edits apply to the active event stream, redraw plots/statistics, parse embedded spillover keywords when present, and drive the N-by-N spillover QC grid.
 - Spectral reference signatures, autofluorescence modeling, quality warnings, and reviewable unmixing create named fluorophore parameters for plots and statistics.
 - Gating templates can be saved from the active hierarchy, applied across a sample group, reviewed as small multiples, tailored per sample, and recomputed into a combined batch statistics table.

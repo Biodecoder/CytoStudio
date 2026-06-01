@@ -551,6 +551,35 @@ canvas.plot-canvas, svg.gate-layer {
   font-size: 10px;
 }
 .table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+.table-builder {
+  display: grid;
+  gap: 12px;
+}
+.drop-target {
+  border: 1px dashed rgba(49,230,208,0.38);
+  border-radius: 8px;
+  padding: 10px;
+  color: var(--muted);
+}
+.drop-target strong {
+  display: block;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+.drop-target > div, .column-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 8px;
+}
+.chip, .column-picks label {
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.05);
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 12px;
+}
 table.data-table {
   width: 100%;
   border-collapse: collapse;
@@ -563,6 +592,13 @@ table.data-table {
   color: var(--muted);
 }
 .data-table th { color: var(--accent); font-weight: 600; }
+.data-table th button {
+  color: inherit;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font: inherit;
+}
 .data-table td:first-child { color: var(--text); }
 .sample-badge {
   display: inline-block;

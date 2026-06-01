@@ -76,6 +76,13 @@ const state = {
     left: "cd4",
     right: "cd3"
   },
+  tableEditor: {
+    mode: "populations",
+    rows: ["singlets", "live", "cd3", "cd4", "cd8"],
+    columns: ["count", "parentPercent", "totalPercent", "median:fsc", "mean:cd3", "robustCV:cd3"],
+    sortColumn: "count",
+    sortDir: "desc"
+  },
   highDim: {
     method: "UMAP",
     clusterer: "FlowSOM",
@@ -1101,35 +1108,90 @@ function statParamLabel(parameterId) {
   return param(parameterId)?.label || parameterId;
 }
 
-function statisticsTableRows() {
-  const marker = defaultStatisticParameters().find(id => /cd3/i.test(id)) || defaultStatisticParameters()[0];
-  const secondary = defaultStatisticParameters().find(id => /cd4/i.test(id)) || defaultStatisticParameters()[1] || marker;
+function statisticColumnDefinitions() {
+  const defaults = defaultStatisticParameters();
+  const first = defaults[0];
+  const marker = defaults.find(id => /cd3/i.test(id)) || first;
+  const secondary = defaults.find(id => /cd4/i.test(id)) || defaults[1] || marker;
   const derived = parameters.find(parameter => parameter.id === "cd4_cd8_ratio") ? "cd4_cd8_ratio" : null;
-  const headers = [
-    "Population",
-    "Events",
-    "% Parent",
-    "% Total",
-    `Median ${statParamLabel(marker)}`,
-    `Mean ${statParamLabel(secondary)}`,
-    `Robust CV ${statParamLabel(marker)}`
-  ];
-  if (derived) headers.push("Median CD4/CD8");
-  const rows = state.populations.slice(1).map(pop => {
-    const stats = statisticsForPopulation(pop.id, [marker, secondary, derived].filter(Boolean));
-    const row = [
-      pop.name,
-      populationCount(pop),
-      stats.parentPercent,
-      stats.totalPercent,
-      statNumber(stats.parameters[marker]?.median),
-      statNumber(stats.parameters[secondary]?.mean, 1),
-      statPercentValue(stats.parameters[marker]?.robustCV)
-    ];
-    if (derived) row.push(statNumber(stats.parameters[derived]?.median, 2));
-    return row;
-  });
-  return { headers, rows };
+  return [
+    { id: "count", label: "Events" },
+    { id: "parentPercent", label: "% Parent" },
+    { id: "totalPercent", label: "% Total" },
+    { id: `median:${first}`, label: `Median ${statParamLabel(first)}` },
+    { id: `mean:${secondary}`, label: `Mean ${statParamLabel(secondary)}` },
+    { id: `geo:${secondary}`, label: `Geomean ${statParamLabel(secondary)}` },
+    { id: `robustCV:${marker}`, label: `Robust CV ${statParamLabel(marker)}` },
+    { id: `p10:${marker}`, label: `P10 ${statParamLabel(marker)}` },
+    { id: `p90:${marker}`, label: `P90 ${statParamLabel(marker)}` },
+    derived ? { id: `median:${derived}`, label: "Median CD4/CD8" } : null
+  ].filter(Boolean);
+}
+
+function formatStatisticValue(columnId, stats, pop, sample) {
+  if (columnId === "count") return populationCount(pop, sample);
+  if (columnId === "parentPercent") return stats.parentPercent;
+  if (columnId === "totalPercent") return stats.totalPercent;
+  const [metric, parameterId] = columnId.split(":");
+  const value = stats.parameters[parameterId]?.[metric === "geo" ? "geometricMean" : metric];
+  if (metric === "robustCV") return statPercentValue(value);
+  return statNumber(value, parameterId === "cd4_cd8_ratio" ? 2 : 1);
+}
+
+function rawStatisticValue(columnId, stats, pop, sample) {
+  if (columnId === "count") return populationCount(pop, sample);
+  if (columnId === "parentPercent") return Number.parseFloat(stats.parentPercent);
+  if (columnId === "totalPercent") return Number.parseFloat(stats.totalPercent);
+  const [metric, parameterId] = columnId.split(":");
+  return stats.parameters[parameterId]?.[metric === "geo" ? "geometricMean" : metric] ?? -Infinity;
+}
+
+function statisticsTableRows() {
+  const columns = statisticColumnDefinitions().filter(column => state.tableEditor.columns.includes(column.id));
+  const parameterIds = Array.from(new Set(columns.map(column => column.id.split(":")[1]).filter(Boolean)));
+  const headers = state.tableEditor.mode === "samples"
+    ? ["Sample", "Group", ...state.tableEditor.rows.map(id => population(id)?.name || id)]
+    : ["Population", ...columns.map(column => column.label)];
+  let rows;
+  let sortValues;
+  if (state.tableEditor.mode === "samples") {
+    const focusColumn = state.tableEditor.columns.includes("parentPercent") ? "parentPercent" : "count";
+    rows = state.samples.map(sample => [
+      sample.name,
+      sample.group,
+      ...state.tableEditor.rows.map(populationId => {
+        recomputePopulationCounts(sample);
+        const pop = population(populationId);
+        const stats = statisticsForPopulation(populationId, parameterIds, sample);
+        return pop ? formatStatisticValue(focusColumn, stats, pop, sample) : "n/a";
+      })
+    ]);
+    rows.sort((a, b) => {
+      const index = state.tableEditor.sortColumn === "group" ? 1 : 0;
+      const direction = state.tableEditor.sortDir === "asc" ? 1 : -1;
+      return String(a[index]).localeCompare(String(b[index])) * direction;
+    });
+    sortValues = rows.map(row => row[state.tableEditor.sortColumn === "group" ? 1 : 0]);
+  } else {
+    const sortIndex = columns.findIndex(column => column.id === state.tableEditor.sortColumn);
+    const built = state.tableEditor.rows.map(populationId => {
+      const pop = population(populationId);
+      if (!pop) return null;
+      const stats = statisticsForPopulation(pop.id, parameterIds);
+      return {
+        row: [pop.name, ...columns.map(column => formatStatisticValue(column.id, stats, pop))],
+        sort: sortIndex >= 0 ? rawStatisticValue(columns[sortIndex].id, stats, pop) : pop.name
+      };
+    }).filter(Boolean);
+    built.sort((a, b) => {
+      const direction = state.tableEditor.sortDir === "asc" ? 1 : -1;
+      if (typeof a.sort === "number" && typeof b.sort === "number") return (a.sort - b.sort) * direction;
+      return String(a.sort).localeCompare(String(b.sort)) * direction;
+    });
+    rows = built.map(item => item.row);
+    sortValues = built.map(item => item.sort);
+  }
+  return { headers, rows, sortValues, columns };
 }
 
 function csvEscape(value) {
@@ -1255,9 +1317,19 @@ function surfaceHTML(view) {
 function tableSurface() {
   const table = statisticsTableRows();
   const batch = state.batch.combinedRows;
+  const columnDefs = statisticColumnDefinitions();
+  const mode = state.tableEditor.mode;
   return `<div class="surface">
-    <div class="surface-card"><h3>Statistics Table Editor</h3><p>Rows and columns are generated from the live population hierarchy and gated event subsets. CSV and clipboard export use this same table model.</p><div class="button-row"><button class="primary" data-action="export-csv">Export CSV</button><button class="secondary" data-action="add-derived">Add CD4/CD8 parameter</button><button class="secondary" data-action="copy-table">Copy table</button></div></div>
-    <div class="table-wrap"><table class="data-table"><thead><tr>${table.headers.map(header => `<th>${header}</th>`).join("")}</tr></thead><tbody>${table.rows.map(row => `<tr>${row.map((cell, index) => `<td>${index === 1 ? fmt(cell) : cell}</td>`).join("")}</tr>`).join("")}</tbody></table></div>
+    <div class="surface-card"><h3>Statistics Table Editor</h3><p>Drag populations from the hierarchy into rows, choose report columns, sort by headers, then copy or export the same table model.</p><div class="button-row"><button class="primary" data-action="export-csv">Export CSV</button><button class="secondary" data-action="export-stats-excel">Excel proof</button><button class="secondary" data-action="add-derived">Add CD4/CD8 parameter</button><button class="secondary" data-action="copy-table">Copy table</button></div></div>
+    <div class="surface-card table-builder">
+      <label class="field"><span>Rows</span><select data-table-field="mode"><option value="populations" ${mode === "populations" ? "selected" : ""}>Populations</option><option value="samples" ${mode === "samples" ? "selected" : ""}>Samples as rows</option></select></label>
+      <div class="drop-target" data-table-drop="rows"><strong>Table rows</strong><span>Drop populations here</span><div>${state.tableEditor.rows.map(id => `<button class="chip" data-action="remove-table-row" data-population="${id}">${population(id)?.name || id} ×</button>`).join("")}</div></div>
+      <div class="column-picks">${columnDefs.map(column => `<label><input type="checkbox" data-table-column="${column.id}" ${state.tableEditor.columns.includes(column.id) ? "checked" : ""}> ${column.label}</label>`).join("")}</div>
+    </div>
+    <div class="table-wrap"><table class="data-table"><thead><tr>${table.headers.map((header, index) => {
+      const sortColumn = mode === "samples" ? (index === 1 ? "group" : "name") : (index === 0 ? "name" : (table.columns?.[index - 1]?.id || "name"));
+      return `<th><button data-action="sort-table" data-sort-column="${sortColumn}">${header}${state.tableEditor.sortColumn === sortColumn ? (state.tableEditor.sortDir === "asc" ? " ↑" : " ↓") : ""}</button></th>`;
+    }).join("")}</tr></thead><tbody>${table.rows.map(row => `<tr>${row.map(cell => `<td>${typeof cell === "number" ? fmt(cell) : cell}</td>`).join("")}</tr>`).join("")}</tbody></table></div>
     ${batch.length ? `<div class="surface-card"><h3>Combined Batch Statistics</h3><p>${state.batch.lastRecomputed}</p><div class="button-row"><button class="primary" data-action="export-batch-csv">Export batch CSV</button></div></div><div class="table-wrap"><table class="data-table"><thead><tr>${state.batch.combinedHeaders.map(header => `<th>${header}</th>`).join("")}</tr></thead><tbody>${batch.map(row => `<tr>${row.map(cell => `<td>${cell}</td>`).join("")}</tr>`).join("")}</tbody></table></div>` : ""}
   </div>`;
 }
@@ -2956,6 +3028,23 @@ function bindEvents() {
       renderInspector();
       return;
     }
+    const tableField = event.target.dataset.tableField;
+    if (tableField) {
+      state.tableEditor[tableField] = event.target.value;
+      addHistory(`Changed statistics table ${tableField} to ${event.target.value}`);
+      renderView();
+      return;
+    }
+    const tableColumn = event.target.dataset.tableColumn;
+    if (tableColumn) {
+      state.tableEditor.columns = event.target.checked
+        ? Array.from(new Set([...state.tableEditor.columns, tableColumn]))
+        : state.tableEditor.columns.filter(column => column !== tableColumn);
+      if (!state.tableEditor.columns.length) state.tableEditor.columns = ["count"];
+      addHistory(`Updated statistics table columns`);
+      renderView();
+      return;
+    }
     const gateField = event.target.dataset.editGate;
     if (gateField) {
       const gate = selectedGate();
@@ -3018,6 +3107,19 @@ function bindEvents() {
     }
     if (action === "add-boolean") {
       createBooleanGate();
+    }
+    if (action === "remove-table-row") {
+      state.tableEditor.rows = state.tableEditor.rows.filter(id => id !== actionTarget.dataset.population);
+      if (!state.tableEditor.rows.length) state.tableEditor.rows = ["all"];
+      addHistory("Removed population from statistics table rows");
+      renderView();
+    }
+    if (action === "sort-table") {
+      const column = actionTarget.dataset.sortColumn;
+      state.tableEditor.sortDir = state.tableEditor.sortColumn === column && state.tableEditor.sortDir === "desc" ? "asc" : "desc";
+      state.tableEditor.sortColumn = column;
+      addHistory(`Sorted statistics table by ${column}`);
+      renderView();
     }
     if (action === "import") document.getElementById("fileInput").click();
     if (action === "export" || action === "export-csv") exportCSV();
@@ -3164,6 +3266,20 @@ function bindEvents() {
     dropZone.classList.remove("drag");
   }));
   dropZone.addEventListener("drop", event => importFiles(event.dataTransfer.files));
+  document.body.addEventListener("dragover", event => {
+    if (event.target.closest("[data-table-drop='rows']")) event.preventDefault();
+  });
+  document.body.addEventListener("drop", event => {
+    const target = event.target.closest("[data-table-drop='rows']");
+    if (!target) return;
+    event.preventDefault();
+    const populationId = event.dataTransfer.getData("text/plain");
+    if (!population(populationId)) return;
+    state.tableEditor.rows = Array.from(new Set([...state.tableEditor.rows, populationId]));
+    addHistory(`Added ${population(populationId).name} to statistics table rows`);
+    toast("Population added to table rows");
+    renderView();
+  });
   window.addEventListener("resize", () => requestAnimationFrame(drawAllPlots));
   if (window.PointerEvent) {
     document.getElementById("canvasRegion").addEventListener("pointerdown", beginGateDrag);
