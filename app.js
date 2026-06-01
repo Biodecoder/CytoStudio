@@ -71,6 +71,11 @@ const state = {
     combinedRows: [],
     lastRecomputed: "not run"
   },
+  booleanBuilder: {
+    operation: "AND",
+    left: "cd4",
+    right: "cd3"
+  },
   highDim: {
     method: "UMAP",
     clusterer: "FlowSOM",
@@ -892,8 +897,26 @@ function eventScreenPoint(event, plotConfig) {
   return { x: nx, y: 1 - ny };
 }
 
-function eventPassesGate(event, gate) {
+function eventPassesPopulationLineage(event, populationId, seen = new Set()) {
+  if (!populationId || populationId === "all") return true;
+  if (seen.has(populationId)) return true;
+  seen.add(populationId);
+  const pop = population(populationId);
+  if (!pop) return true;
+  if (pop.parent && !eventPassesPopulationLineage(event, pop.parent, seen)) return false;
+  const gate = gateForPopulation(populationId);
+  return gate ? eventPassesGate(event, gate, seen) : true;
+}
+
+function eventPassesGate(event, gate, seen = new Set()) {
   if (gate.type === "cluster") return highDimClusterForEvent(event, state.highDim.parameters) === gate.cluster;
+  if (gate.type === "boolean") {
+    const operands = (gate.operands || []).filter(Boolean);
+    if (!operands.length) return true;
+    if (gate.operation === "NOT") return !eventPassesPopulationLineage(event, operands[0], new Set(seen));
+    if (gate.operation === "OR") return operands.some(populationId => eventPassesPopulationLineage(event, populationId, new Set(seen)));
+    return operands.every(populationId => eventPassesPopulationLineage(event, populationId, new Set(seen)));
+  }
   const plotConfig = plot(gate.plot);
   if (!plotConfig) return true;
   const point = eventScreenPoint(event, plotConfig);
@@ -1102,6 +1125,12 @@ function renderInspector() {
         <div class="stat-row"><span>Parameters</span><strong>${statParamLabel(plot(gate.plot)?.x)} / ${plot(gate.plot)?.y ? statParamLabel(plot(gate.plot).y) : "Frequency"}</strong></div>
       </div>
     </div>` : ""}
+    <div class="panel-block"><h3>Boolean Gate</h3>
+      <label class="field"><span>Operation</span><select data-boolean-field="operation">${["AND","OR","NOT"].map(op => `<option value="${op}" ${state.booleanBuilder.operation === op ? "selected" : ""}>${op}</option>`).join("")}</select></label>
+      <label class="field"><span>Gate A</span><select data-boolean-field="left">${gatePopulationOptions(state.booleanBuilder.left)}</select></label>
+      <label class="field"><span>Gate B</span><select data-boolean-field="right" ${state.booleanBuilder.operation === "NOT" ? "disabled" : ""}>${gatePopulationOptions(state.booleanBuilder.right)}</select></label>
+      <div class="button-row"><button class="primary" data-action="add-boolean">Create boolean gate</button></div>
+    </div>
     <div class="panel-block"><h3>Population Statistics</h3>
       <div class="stats-list">
         <div class="stat-row"><span>Population</span><strong style="color:${pop.color}">${pop.name}</strong></div>
@@ -1539,6 +1568,50 @@ function createGate() {
   toast("Gate created; hierarchy, plots, and stats updated");
   render();
   return gate;
+}
+
+function gatePopulationOptions(selected) {
+  return state.populations
+    .filter(pop => pop.id !== "all" && gateForPopulation(pop.id))
+    .map(pop => `<option value="${pop.id}" ${pop.id === selected ? "selected" : ""}>${escapeHTML(pop.name)}</option>`)
+    .join("");
+}
+
+function populationLineage(populationId) {
+  const ids = [];
+  let current = population(populationId);
+  while (current) {
+    ids.push(current.id);
+    current = current.parent ? population(current.parent) : null;
+  }
+  return ids;
+}
+
+function commonBooleanParent(operands) {
+  const lineages = operands.map(populationLineage).filter(items => items.length);
+  if (!lineages.length) return "all";
+  return lineages[0].find(id => lineages.every(items => items.includes(id))) || "all";
+}
+
+function createBooleanGate() {
+  const candidates = state.populations.filter(pop => pop.id !== "all" && gateForPopulation(pop.id));
+  const left = population(state.booleanBuilder.left) || population(state.selectedPopulation) || candidates[0];
+  const right = population(state.booleanBuilder.right) || candidates.find(pop => pop.id !== left?.id) || left;
+  if (!left) return;
+  const operation = state.booleanBuilder.operation || "AND";
+  const operands = operation === "NOT" ? [left.id] : [left.id, right.id].filter(Boolean);
+  const name = operation === "NOT" ? `NOT ${left.name}` : `${left.name} ${operation} ${right.name}`;
+  const id = `bool${Date.now()}`;
+  const color = operation === "AND" ? "#ffd45a" : (operation === "OR" ? "#44b7d0" : "#e45668");
+  const parent = operation === "NOT" ? (left.parent || "all") : commonBooleanParent(operands);
+  state.populations.push({ id, parent, name, color, count: 0, gate: "boolean" });
+  state.gates.push({ id: `g${Date.now()}`, plot: state.selectedPlot, population: id, type: "boolean", operation, operands, label: "" });
+  state.selectedPopulation = id;
+  state.selectedGate = state.gates[state.gates.length - 1].id;
+  recomputePopulationCounts();
+  addHistory(`Created boolean ${operation} gate from ${operands.map(item => population(item)?.name).filter(Boolean).join(", ")}`);
+  toast("Boolean gate computed from existing gate membership");
+  render();
 }
 
 function insertGate(type, plotId, seed = null) {
@@ -2825,6 +2898,12 @@ function bindEvents() {
       render();
       return;
     }
+    const booleanField = event.target.dataset.booleanField;
+    if (booleanField) {
+      state.booleanBuilder[booleanField] = event.target.value;
+      renderInspector();
+      return;
+    }
     const gateField = event.target.dataset.editGate;
     if (gateField) {
       const gate = selectedGate();
@@ -2886,11 +2965,7 @@ function bindEvents() {
       render();
     }
     if (action === "add-boolean") {
-      const parent = population(state.selectedPopulation);
-      const id = `bool${Date.now()}`;
-      state.populations.push({ id, parent: parent.parent || "live", name: `${parent.name} AND Live`, color: "#ffd45a", count: Math.floor(populationCount(parent) * 0.72), gate: "boolean" });
-      addHistory("Created boolean AND gate scaffold");
-      render();
+      createBooleanGate();
     }
     if (action === "import") document.getElementById("fileInput").click();
     if (action === "export" || action === "export-csv") exportCSV();
