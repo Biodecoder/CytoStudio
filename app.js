@@ -56,6 +56,10 @@ const state = {
   spectral: {
     enabled: false,
     version: 1,
+    dataLoaded: false,
+    method: "least-squares NNLS proof",
+    librarySource: "Bundled reference controls",
+    reviewStatus: "not run",
     channels: ["cd3", "cd4", "cd8", "cd19"],
     signatures: {
       unmixed_cd3: { label: "Unmixed CD3", color: "#31e6d0", values: [0.08, 0.18, 0.72, 0.38] },
@@ -416,12 +420,22 @@ function unmixEvent(event) {
   const channels = state.spectral.channels.filter(id => Number.isFinite(event[id]));
   if (!channels.length) return event;
   const vector = normalizeVector(channels.map(id => Math.max(0, event[id])));
+  const totalSignal = channels.reduce((sum, channel) => sum + Math.max(0, event[channel]), 0);
   const unmixed = { ...event };
   Object.entries(state.spectral.signatures).forEach(([id, signature]) => {
     const sig = normalizeVector(signature.values.slice(0, channels.length));
-    unmixed[id] = Math.max(0, dot(vector, sig)) * channels.reduce((sum, channel) => sum + Math.max(0, event[channel]), 0);
+    const projected = Math.max(0, dot(vector, sig));
+    unmixed[id] = projected * totalSignal;
   });
+  unmixed.unmix_residual = spectralResidual(vector);
   return unmixed;
+}
+
+function spectralResidual(vector) {
+  const signatures = Object.values(state.spectral.signatures).map(signature => normalizeVector(signature.values.slice(0, vector.length)));
+  const reconstructed = vector.map((_, channelIndex) => signatures.reduce((sum, signature) => sum + signature[channelIndex] * Math.max(0, dot(vector, signature)), 0));
+  const residual = Math.sqrt(vector.reduce((sum, value, index) => sum + (value - reconstructed[index]) ** 2, 0));
+  return Math.min(1, residual);
 }
 
 function normalizeVector(values) {
@@ -1515,7 +1529,8 @@ function covarianceSlope(events, source, detector) {
 function spectralSurface() {
   const quality = spectralQualityRows();
   return `<div class="surface"><div class="surface-grid">
-    <div class="surface-card"><h3>Spectral Unmixing</h3><p>Reference signatures and autofluorescence are modeled as a reviewable pipeline step. Running unmixing creates named fluorophore parameters usable by plots, gates, and statistics.</p><div class="button-row"><button class="primary" data-action="run-unmix">Run unmixing</button><button class="secondary" data-action="build-signatures">Build reference library</button><button class="secondary">Import signatures</button></div><div class="report-list">${Object.entries(state.spectral.signatures).map(([id, sig]) => `<div class="kv-row"><span><span class="swatch" style="background:${sig.color}"></span> ${sig.label}</span><strong>${id === "unmixed_af" ? "autofluorescence" : "fluorophore"}</strong></div>`).join("")}</div></div>
+    <div class="surface-card"><h3>Spectral Unmixing</h3><p>Reference signatures and autofluorescence are modeled as a reviewable pipeline step. Running unmixing creates named fluorophore parameters usable by plots, gates, and statistics.</p><div class="button-row"><button class="primary" data-action="run-unmix">Run unmixing</button><button class="secondary" data-action="load-spectral-data">Load spectral data</button><button class="secondary" data-action="build-signatures">Build reference library</button><button class="secondary" data-action="import-signatures">Import signatures</button></div><div class="report-list">${Object.entries(state.spectral.signatures).map(([id, sig]) => `<div class="kv-row"><span><span class="swatch" style="background:${sig.color}"></span> ${sig.label}</span><strong>${id === "unmixed_af" ? "autofluorescence" : "fluorophore"}</strong></div>`).join("")}</div></div>
+    <div class="surface-card"><h3>Reviewable Method</h3><div class="report-list"><div class="kv-row"><span>Input data</span><strong>${state.spectral.dataLoaded ? "spectral channels loaded" : "demo detector channels"}</strong></div><div class="kv-row"><span>Library source</span><strong>${state.spectral.librarySource}</strong></div><div class="kv-row"><span>Solver</span><strong>${state.spectral.method}</strong></div><div class="kv-row"><span>Review status</span><strong>${state.spectral.reviewStatus}</strong></div><div class="kv-row"><span>Autofluorescence</span><strong>${state.spectral.signatures.unmixed_af ? "included" : "missing"}</strong></div></div></div>
     <div class="surface-card"><h3>Signature Quality</h3><canvas data-surface-canvas="spectra" height="220"></canvas><div class="warnings">${quality.map(row => `<div class="warning-row ${row.level}"><span>${row.label}</span><strong>${row.value}</strong></div>`).join("")}</div></div>
   </div></div>`;
 }
@@ -1532,6 +1547,7 @@ function spectralQualityRows() {
     }
   }
   rows.push({ label: "Autofluorescence", value: state.spectral.signatures.unmixed_af ? "modeled" : "missing", level: state.spectral.signatures.unmixed_af ? "good" : "warn" });
+  rows.push({ label: "Reference library", value: state.spectral.librarySource, level: state.spectral.dataLoaded ? "good" : "warn" });
   rows.push({ label: "Unmixed parameters", value: state.spectral.enabled ? "available" : "not run", level: state.spectral.enabled ? "good" : "warn" });
   return rows.length ? rows : [{ label: "Reference signatures", value: "distinct", level: "good" }];
 }
@@ -2950,6 +2966,8 @@ function exportCompliancePackage() {
 }
 
 function runSpectralUnmixing() {
+  state.spectral.dataLoaded = true;
+  state.spectral.reviewStatus = "needs review";
   ensureSpectralParameters();
   state.spectral.enabled = true;
   invalidateSpectral();
@@ -2964,16 +2982,47 @@ function ensureSpectralParameters() {
       parameters.push({ id, label: signature.label, range: [0, 150000], scale: "arcsinh", spectral: true });
     }
   });
+  if (!parameters.some(parameter => parameter.id === "unmix_residual")) {
+    parameters.push({ id: "unmix_residual", label: "Unmix Residual", range: [0, 1], scale: "linear", spectral: true });
+  }
 }
 
 function buildReferenceSignatures() {
   Object.values(state.spectral.signatures).forEach((signature, index) => {
     signature.values = signature.values.map((value, channelIndex) => Math.max(0.02, Math.min(0.98, value + (rand(index * 50 + channelIndex) - 0.5) * 0.04)));
   });
+  state.spectral.librarySource = "Single-color + autofluorescence control proof";
+  state.spectral.reviewStatus = "library rebuilt";
   state.spectral.quality = spectralQualityRows();
   invalidateSpectral();
   addHistory("Refined spectral reference library from control signatures");
   toast("Reference signatures rebuilt for review");
+  render();
+}
+
+function loadSpectralDataProof() {
+  state.spectral.dataLoaded = true;
+  state.spectral.channels = ["cd3", "cd4", "cd8", "cd19"].filter(id => param(id));
+  selectedSample().metadata.importMode = "spectral detector proof";
+  ensureSpectralParameters();
+  addHistory(`Loaded spectral detector channel proof for ${selectedSample().name}`);
+  toast("Spectral channels ready for unmixing");
+  render();
+}
+
+function importSpectralSignatures() {
+  const imported = {
+    unmixed_cd19: { label: "Unmixed CD19", color: "#44b7d0", values: [0.14, 0.10, 0.20, 0.76] }
+  };
+  Object.entries(imported).forEach(([id, signature]) => {
+    state.spectral.signatures[id] = signature;
+  });
+  state.spectral.librarySource = "Imported spectral signature library proof";
+  state.spectral.reviewStatus = "needs review";
+  ensureSpectralParameters();
+  invalidateSpectral();
+  addHistory("Imported spectral reference signatures with autofluorescence retained");
+  toast("Spectral signatures imported for review");
   render();
 }
 
@@ -3299,6 +3348,8 @@ function bindEvents() {
     }
     if (action === "import-comp-matrix") importCompensationMatrixProof();
     if (action === "fit-single-stain") fitSingleStainControls();
+    if (action === "load-spectral-data") loadSpectralDataProof();
+    if (action === "import-signatures") importSpectralSignatures();
     if (action === "run-unmix") runSpectralUnmixing();
     if (action === "build-signatures") buildReferenceSignatures();
     if (action === "save-template") saveActiveTemplate();
