@@ -304,6 +304,9 @@ canvas.plot-canvas, svg.gate-layer {
   fill: rgba(49,230,208,0.18);
   stroke: var(--accent);
 }
+.gate-shape.creating {
+  animation: gate-fill-in 620ms ease-out;
+}
 .gate-handle {
   fill: var(--accent);
   stroke: rgba(3, 12, 12, 0.9);
@@ -317,6 +320,16 @@ canvas.plot-canvas, svg.gate-layer {
   paint-order: stroke;
   stroke: rgba(0,0,0,0.6);
   stroke-width: 0.75px;
+}
+@keyframes gate-fill-in {
+  from {
+    fill-opacity: 0;
+    stroke-width: 3;
+  }
+  to {
+    fill-opacity: 1;
+    stroke-width: 1.6;
+  }
 }
 .plot-legend {
   position: absolute;

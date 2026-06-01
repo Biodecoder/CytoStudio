@@ -20,7 +20,7 @@ Then visit `http://localhost:5178`.
 - Local FCS 3.0/3.1 parser for standard list-mode numeric files, including header/TEXT parsing, keywords, parameter labels, common integer/float event payloads, spillover, escaped delimiters, max-event limits, big-endian integer fixtures, and a public Bioconductor FCS3.0 regression fixture.
 - Worker-backed FCS import path parses dropped files off the UI thread when served locally, with streamed byte-level progress, event-level parse progress, cancellation, direct parser fallback for constrained contexts, and metadata-only preflight for oversized files.
 - Experiment browser supports sample grouping by dragging one sample onto another sample's group.
-- Manual gate tool selection, gate creation, direct SVG handle editing/nudging, inspector rename/recolor, gate hierarchy, boolean-gate scaffold, backgating/live-linking messaging, and live statistics.
+- Manual gate tool selection, direct plot drawing for drag gates and click-to-place polygon gates, direct SVG handle editing/nudging, inspector rename/recolor, gate hierarchy, boolean-gate scaffold, backgating/live-linking messaging, and live statistics.
 - Gate geometry evaluation for rectangle, polygon/lasso, ellipse, quadrant, and histogram interval gates, with recursive parent-to-child population counts based on active sample events.
 - Shared axis transform module for linear, log, logicle / biexponential, and arcsinh transforms, with inspector controls for log floor, transform width, arcsinh cofactor, auto-tuned defaults from the active parameter range/event preview, and scale-aware axis ticks.
 - Histograms now bin active event data through the selected axis transform instead of drawing fixed placeholder curves.
