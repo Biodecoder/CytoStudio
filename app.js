@@ -125,7 +125,10 @@ const state = {
   },
   report: {
     status: "not generated",
-    lastExport: "none"
+    lastExport: "none",
+    replayTargetSample: "s2",
+    replayStatus: "not replayed",
+    replayPreview: null
   },
   workspace: {
     name: "PBMC Panel Workspace",
@@ -201,7 +204,8 @@ const state = {
     "14 Workspace sharing, autosave, audit log",
     "15 Onboarding, sample data, accessibility polish",
     "16 Clinical mode scaffold"
-  ]
+  ],
+  pipelineRecords: []
 };
 
 let syntheticEvents = [];
@@ -212,6 +216,49 @@ let activeImportReject = null;
 let activeGateDrag = null;
 let activeGateDraft = null;
 let activeFigureDrag = null;
+
+function initializePipelineRecords() {
+  if (state.pipelineRecords.length) return;
+  state.pipelineRecords = state.pipeline.map((label, index) => ({
+    id: `seed-${String(index).padStart(2, "0")}`,
+    timestamp: new Date(Date.now() - (state.pipeline.length - index) * 60000).toISOString(),
+    kind: index < 13 ? "milestone" : "planned",
+    label,
+    sampleId: state.selectedSample,
+    populationId: state.selectedPopulation,
+    plotId: state.selectedPlot,
+    payload: { prompt: index },
+    before: index ? state.pipeline[index - 1] : "new workspace",
+    after: label
+  }));
+}
+
+function inferPipelineKind(text) {
+  const value = text.toLowerCase();
+  if (/compensation|matrix|spillover/.test(value)) return "compensation";
+  if (/spectral|unmix|signature|autofluorescence/.test(value)) return "unmixing";
+  if (/gate|population|hierarchy|backgat|tailor|reparent|boolean/.test(value)) return "gate";
+  if (/derived|ratio|transform|scale|axis/.test(value)) return "transform";
+  if (/umap|tsne|t-sne|flowsom|cluster|embedding/.test(value)) return "clustering";
+  if (/report|export|gatingml|fcs|csv|excel|json|package|share/.test(value)) return "export";
+  if (/template|batch/.test(value)) return "template";
+  if (/replay|pipeline|history|audit/.test(value)) return "pipeline";
+  if (/clinical|signature|lock|compliance/.test(value)) return "compliance";
+  return "interaction";
+}
+
+function pipelineRecordLabel(record) {
+  return typeof record === "string" ? record : record.label;
+}
+
+function pipelineRecordKind(record) {
+  return typeof record === "string" ? inferPipelineKind(record) : record.kind;
+}
+
+function pipelineRecords() {
+  initializePipelineRecords();
+  return state.pipelineRecords;
+}
 
 function defaultTransformSettings(parameter = null, events = []) {
   if (!parameter) return { cofactor: 150, width: 18, floor: 1 };
@@ -608,7 +655,7 @@ function renderStatus() {
   document.getElementById("statusEvents").textContent = `Events: ${fmt(sample.events)}`;
   document.getElementById("statusSample").textContent = `Sample: ${sample.name}`;
   document.getElementById("statusPopulation").textContent = `Selected: ${pop.name} (${fmt(populationCount(pop))} events)`;
-  document.getElementById("statusPipeline").textContent = `Pipeline: ${state.pipeline.length} steps`;
+  document.getElementById("statusPipeline").textContent = `Pipeline: ${pipelineRecords().length} steps`;
 }
 
 function renderView() {
@@ -1233,7 +1280,7 @@ function renderInspector() {
   document.querySelectorAll("[data-inspector]").forEach(btn => btn.classList.toggle("active", btn.dataset.inspector === state.inspectorTab));
   const host = document.getElementById("inspectorBody");
   if (state.inspectorTab === "history") {
-    host.innerHTML = `<div class="panel-block"><h3>Audit History</h3><div class="pipeline-list">${state.pipeline.map((step, i) => `<div class="pipeline-item"><span>${step}</span><strong>${i <= 10 ? "done" : "scaffold"}</strong></div>`).join("")}</div></div>`;
+    host.innerHTML = `<div class="panel-block"><h3>Audit History</h3><div class="pipeline-list">${pipelineRecords().map(record => `<div class="pipeline-item"><span>${pipelineRecordLabel(record)}</span><strong>${pipelineRecordKind(record)}</strong></div>`).join("")}</div></div>`;
     return;
   }
   const p = plot(state.selectedPlot);
@@ -1647,40 +1694,62 @@ function figureElementHTML(element) {
 }
 
 function pipelineSurface() {
-  const cursor = state.pipelineCursor ?? state.pipeline.length - 1;
+  const records = pipelineRecords();
+  const cursor = Math.max(0, Math.min(records.length - 1, state.pipelineCursor ?? records.length - 1));
+  const selectedRecord = records[cursor];
+  const target = state.samples.find(sample => sample.id === state.report.replayTargetSample) || state.samples.find(sample => sample.id !== state.selectedSample) || selectedSample();
   return `<div class="surface pipeline-surface">
     <div class="surface-grid">
-      <div class="surface-card"><h3>Replayable Analysis Pipeline</h3><p>Review every meaningful action, step backward and forward through the timeline, replay it on the selected sample, and export an auditable pipeline package.</p><div class="button-row"><button class="primary" data-action="replay-pipeline">Replay on selected sample</button><button class="secondary" data-action="pipeline-step-back">Step back</button><button class="secondary" data-action="pipeline-step-forward">Step forward</button><button class="secondary" data-action="export-pipeline-json">Export JSON</button></div><div class="report-list"><div class="kv-row"><span>Current step</span><strong>${cursor + 1} / ${state.pipeline.length}</strong></div><div class="kv-row"><span>Report</span><strong>${state.report.status}</strong></div><div class="kv-row"><span>Last export</span><strong>${state.report.lastExport}</strong></div></div></div>
+      <div class="surface-card"><h3>Replayable Analysis Pipeline</h3><p>Review typed actions, step through history, replay gate/statistics ratios on a target sample, and export the canonical pipeline package.</p><div class="button-row"><button class="primary" data-action="replay-pipeline">Replay on target sample</button><button class="secondary" data-action="pipeline-step-back">Step back</button><button class="secondary" data-action="pipeline-step-forward">Step forward</button><button class="secondary" data-action="export-pipeline-json">Export JSON</button></div><label class="field"><span>Replay target</span><select data-report-field="replayTargetSample">${state.samples.map(sample => `<option value="${sample.id}" ${target.id === sample.id ? "selected" : ""}>${sample.name}</option>`).join("")}</select></label><div class="report-list"><div class="kv-row"><span>Current step</span><strong>${cursor + 1} / ${records.length}</strong></div><div class="kv-row"><span>Event type</span><strong>${pipelineRecordKind(selectedRecord)}</strong></div><div class="kv-row"><span>Replay</span><strong>${state.report.replayStatus}</strong></div><div class="kv-row"><span>Report</span><strong>${state.report.status}</strong></div><div class="kv-row"><span>Last export</span><strong>${state.report.lastExport}</strong></div></div></div>
       <div class="surface-card"><h3>Reports & Data Export</h3><p>Generate an experiment summary with hierarchy, key plots, and statistics; export proof artifacts for downstream analysis and interoperability.</p><div class="button-row"><button class="primary" data-action="generate-report">Generate PDF report</button><button class="secondary" data-action="export-gated-fcs">Gated FCS</button><button class="secondary" data-action="export-event-table">Events CSV/Parquet</button><button class="secondary" data-action="export-stats-excel">Stats Excel</button><button class="secondary" data-action="export-gatingml">GatingML</button></div></div>
     </div>
     <div class="pipeline-layout">
-      <div class="surface-card"><h3>Action Timeline</h3><div class="timeline-list">${state.pipeline.map((step, i) => `<button class="${i === cursor ? "active" : ""}" data-action="select-pipeline-step" data-step="${i}"><strong>${String(i + 1).padStart(2, "0")}</strong><span>${step}</span></button>`).join("")}</div></div>
+      <div class="surface-card"><h3>Action Timeline</h3><div class="timeline-list">${records.map((record, i) => `<button class="${i === cursor ? "active" : ""}" data-action="select-pipeline-step" data-step="${i}"><strong>${String(i + 1).padStart(2, "0")}</strong><span>${pipelineRecordLabel(record)}<em>${pipelineRecordKind(record)}</em></span></button>`).join("")}</div></div>
+      <div class="surface-card"><h3>Step Details</h3>${pipelineDetailHTML(selectedRecord)}${replayPreviewHTML()}</div>
       <div class="surface-card"><h3>Report Preview</h3>${reportPreviewHTML()}</div>
     </div>
   </div>`;
 }
 
+function pipelineDetailHTML(record) {
+  if (!record) return `<div class="report-preview"><p>No pipeline step selected.</p></div>`;
+  const sample = state.samples.find(item => item.id === record.sampleId);
+  const pop = population(record.populationId);
+  const p = plot(record.plotId);
+  const payload = Object.keys(record.payload || {}).length ? JSON.stringify(record.payload, null, 2) : "none";
+  return `<div class="report-preview"><h4>${pipelineRecordLabel(record)}</h4><div class="warnings"><div class="warning-row good"><span>Type</span><strong>${pipelineRecordKind(record)}</strong></div><div class="warning-row good"><span>Sample</span><strong>${sample?.name || "workspace"}</strong></div><div class="warning-row good"><span>Population</span><strong>${pop?.name || "n/a"}</strong></div><div class="warning-row good"><span>Plot</span><strong>${p?.title || "n/a"}</strong></div></div><pre class="pipeline-payload">${csvEscape(payload)}</pre></div>`;
+}
+
+function replayPreviewHTML() {
+  const preview = state.report.replayPreview;
+  if (!preview) return `<div class="report-preview"><h4>Replay preview</h4><p>No replay has been run in this session.</p></div>`;
+  return `<div class="report-preview"><h4>Replay preview</h4><p>${preview.actions} typed records replayed onto ${preview.sampleName}.</p><div class="warnings"><div class="warning-row good"><span>Gate ratios</span><strong>${preview.gates}</strong></div><div class="warning-row good"><span>Transforms</span><strong>${preview.transforms}</strong></div><div class="warning-row good"><span>Clusters</span><strong>${preview.clusters}</strong></div><div class="warning-row warn"><span>Replay mode</span><strong>prototype summary</strong></div></div></div>`;
+}
+
 function reportPreviewHTML() {
   const table = statisticsTableRows();
-  return `<div class="report-preview"><h4>${selectedSample().name}</h4><p>${state.populations.length} populations, ${state.gates.length} gates, ${state.pipeline.length} recorded actions.</p><div class="warnings"><div class="warning-row good"><span>Hierarchy</span><strong>${population(state.selectedPopulation).name}</strong></div><div class="warning-row good"><span>Key plots</span><strong>${state.plots.length}</strong></div><div class="warning-row good"><span>Statistics rows</span><strong>${table.rows.length}</strong></div><div class="warning-row warn"><span>PDF engine</span><strong>browser proof</strong></div></div></div>`;
+  const records = pipelineRecords();
+  return `<div class="report-preview"><h4>${selectedSample().name}</h4><p>${state.populations.length} populations, ${state.gates.length} gates, ${records.length} structured records.</p><div class="warnings"><div class="warning-row good"><span>Hierarchy</span><strong>${population(state.selectedPopulation).name}</strong></div><div class="warning-row good"><span>Key plots</span><strong>${state.plots.length}</strong></div><div class="warning-row good"><span>Statistics rows</span><strong>${table.rows.length}</strong></div><div class="warning-row good"><span>Typed history</span><strong>${new Set(records.map(pipelineRecordKind)).size} event types</strong></div><div class="warning-row warn"><span>PDF engine</span><strong>browser proof</strong></div></div></div>`;
 }
 
 function shareSurface() {
   const workspace = state.workspace;
+  const records = pipelineRecords();
   return `<div class="surface"><div class="surface-grid">
     <div class="surface-card"><h3>Workspace Files & Sharing</h3><p>Workspace JSON captures sample references, content hashes, gates, plots, layout, settings, and the full pipeline without duplicating raw FCS data.</p><div class="button-row"><button class="primary" data-action="save-workspace">Save workspace</button><button class="secondary" data-action="open-workspace">Open autosave</button><button class="secondary" data-action="share-package">Share package</button><button class="secondary" data-action="toggle-autosave">${workspace.autosave ? "Autosave on" : "Autosave off"}</button><button class="secondary" data-action="toggle-sync">${workspace.syncEnabled ? "Shared sync on" : "Shared sync off"}</button></div><div class="report-list"><div class="kv-row"><span>Workspace</span><strong>${workspace.name}</strong></div><div class="kv-row"><span>Last saved</span><strong>${workspace.lastSaved}</strong></div><div class="kv-row"><span>Recovery</span><strong>${workspace.recoveryAvailable ? "available" : "none"}</strong></div><div class="kv-row"><span>Share status</span><strong>${workspace.shareStatus}</strong></div></div></div>
-    <div class="surface-card"><h3>Interoperability</h3><p>Import/export actions use proof adapters for GatingML, FlowJo, and Cytobank workspace migration while preserving the audit trail.</p><div class="button-row"><button class="primary" data-action="export-gatingml">Export GatingML</button><button class="secondary" data-action="import-gatingml">Import GatingML</button><button class="secondary" data-action="import-flowjo">Import FlowJo</button><button class="secondary" data-action="import-cytobank">Import Cytobank</button></div><div class="report-list"><div class="kv-row"><span>Raw data policy</span><strong>Reference by hash</strong></div><div class="kv-row"><span>Imports</span><strong>${workspace.imports.length || "none"}</strong></div><div class="kv-row"><span>Audit log</span><strong>${state.pipeline.length} entries</strong></div><div class="kv-row"><span>Team handoff</span><strong>${workspace.syncEnabled ? "change log enabled" : "local package"}</strong></div></div></div>
-    <div class="surface-card"><h3>Change Log</h3><div class="timeline-list">${state.pipeline.slice(-8).map((step, index) => `<button><strong>${index + 1}</strong><span>${step}</span></button>`).join("")}</div></div>
+    <div class="surface-card"><h3>Interoperability</h3><p>Import/export actions use proof adapters for GatingML, FlowJo, and Cytobank workspace migration while preserving the audit trail.</p><div class="button-row"><button class="primary" data-action="export-gatingml">Export GatingML</button><button class="secondary" data-action="import-gatingml">Import GatingML</button><button class="secondary" data-action="import-flowjo">Import FlowJo</button><button class="secondary" data-action="import-cytobank">Import Cytobank</button></div><div class="report-list"><div class="kv-row"><span>Raw data policy</span><strong>Reference by hash</strong></div><div class="kv-row"><span>Imports</span><strong>${workspace.imports.length || "none"}</strong></div><div class="kv-row"><span>Audit log</span><strong>${records.length} structured entries</strong></div><div class="kv-row"><span>Team handoff</span><strong>${workspace.syncEnabled ? "change log enabled" : "local package"}</strong></div></div></div>
+    <div class="surface-card"><h3>Change Log</h3><div class="timeline-list">${records.slice(-8).map((record, index) => `<button><strong>${index + 1}</strong><span>${pipelineRecordLabel(record)}<em>${pipelineRecordKind(record)}</em></span></button>`).join("")}</div></div>
   </div></div>`;
 }
 
 function clinicalSurface() {
   const c = state.clinical;
+  const records = pipelineRecords();
   return `<div class="surface"><div class="surface-grid">
     <div class="surface-card"><h3>Clinical Mode</h3><p>Clinical mode is off by default and intentionally isolated from research workflows. This prototype surfaces regulated-environment controls without claiming validation or legal compliance.</p><div class="button-row"><button class="primary" data-action="enable-clinical">${c.enabled ? "Clinical mode enabled" : "Enable clinical mode"}</button><button class="secondary" data-action="lock-analysis">Lock analysis</button><button class="secondary" data-action="sign-report">E-sign report</button><button class="secondary" data-action="export-compliance">Compliance export</button></div><div class="report-list"><div class="kv-row"><span>User</span><strong>${c.user}</strong></div><div class="kv-row"><span>Role</span><strong>${c.role}</strong></div><div class="kv-row"><span>Analysis lock</span><strong>${c.locked ? "finalized" : "editable"}</strong></div><div class="kv-row"><span>Signature</span><strong>${c.signed ? "signed" : "not signed"}</strong></div></div></div>
     <div class="surface-card"><h3>Configuration</h3><label class="field"><span>Role</span><select data-clinical-field="role"><option ${c.role === "Research" ? "selected" : ""}>Research</option><option ${c.role === "Operator" ? "selected" : ""}>Operator</option><option ${c.role === "Reviewer" ? "selected" : ""}>Reviewer</option><option ${c.role === "Administrator" ? "selected" : ""}>Administrator</option></select></label><label class="field"><span>Retention</span><input type="number" min="1" max="25" value="${c.retentionYears}" data-clinical-field="retentionYears"></label><label class="field"><span>Access</span><select data-clinical-field="access"><option ${c.access === "local roles" ? "selected" : ""}>local roles</option><option ${c.access === "directory sync" ? "selected" : ""}>directory sync</option><option ${c.access === "read-only review" ? "selected" : ""}>read-only review</option></select></label></div>
-    <div class="surface-card"><h3>Immutable Audit Trail</h3><div class="timeline-list">${state.pipeline.slice(-10).map((step, index) => `<button><strong>${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</strong><span>${c.user} · ${step}</span></button>`).join("")}</div></div>
-    <div class="surface-card"><h3>Compliance Export Checklist</h3><div class="warnings"><div class="warning-row ${c.enabled ? "good" : "warn"}"><span>Clinical mode</span><strong>${c.enabled ? "enabled" : "off"}</strong></div><div class="warning-row ${c.locked ? "good" : "warn"}"><span>Finalized analysis</span><strong>${c.locked ? "locked" : "open"}</strong></div><div class="warning-row ${c.signed ? "good" : "warn"}"><span>Electronic signature</span><strong>${c.signed ? "captured" : "needed"}</strong></div><div class="warning-row good"><span>Audit trail</span><strong>${state.pipeline.length} entries</strong></div><div class="warning-row warn"><span>21 CFR Part 11 validation</span><strong>not claimed</strong></div><div class="warning-row warn"><span>Lab SOP/legal review</span><strong>required</strong></div></div></div>
+    <div class="surface-card"><h3>Immutable Audit Trail</h3><div class="timeline-list">${records.slice(-10).map(record => `<button><strong>${new Date(record.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</strong><span>${c.user} · ${pipelineRecordLabel(record)}<em>${pipelineRecordKind(record)}</em></span></button>`).join("")}</div></div>
+    <div class="surface-card"><h3>Compliance Export Checklist</h3><div class="warnings"><div class="warning-row ${c.enabled ? "good" : "warn"}"><span>Clinical mode</span><strong>${c.enabled ? "enabled" : "off"}</strong></div><div class="warning-row ${c.locked ? "good" : "warn"}"><span>Finalized analysis</span><strong>${c.locked ? "locked" : "open"}</strong></div><div class="warning-row ${c.signed ? "good" : "warn"}"><span>Electronic signature</span><strong>${c.signed ? "captured" : "needed"}</strong></div><div class="warning-row good"><span>Audit trail</span><strong>${records.length} structured entries</strong></div><div class="warning-row warn"><span>21 CFR Part 11 validation</span><strong>not claimed</strong></div><div class="warning-row warn"><span>Lab SOP/legal review</span><strong>required</strong></div></div></div>
   </div></div>`;
 }
 
@@ -1809,9 +1878,25 @@ function drawSurfaceCanvases() {
   });
 }
 
-function addHistory(text) {
+function addHistory(text, options = {}) {
+  initializePipelineRecords();
+  const label = String(text);
+  const record = {
+    id: `evt-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    timestamp: new Date().toISOString(),
+    kind: options.kind || inferPipelineKind(label),
+    label,
+    sampleId: options.sampleId || state.selectedSample,
+    populationId: options.populationId || state.selectedPopulation,
+    plotId: options.plotId || state.selectedPlot,
+    payload: options.payload || {},
+    before: options.before || `Sample ${selectedSample().name}; ${population(state.selectedPopulation).name}`,
+    after: options.after || label
+  };
   state.pipeline.push(text);
-  if (state.pipeline.length > 24) state.pipeline.splice(16, state.pipeline.length - 24);
+  state.pipelineRecords.push(record);
+  if (state.pipeline.length > 32) state.pipeline.splice(17, state.pipeline.length - 32);
+  if (state.pipelineRecords.length > 32) state.pipelineRecords.splice(17, state.pipelineRecords.length - 32);
   state.pipelineCursor = state.pipeline.length - 1;
   if (state.workspace?.autosave) autosaveWorkspace();
 }
@@ -2903,51 +2988,90 @@ function figureSVG() {
 }
 
 function setPipelineCursor(index) {
-  state.pipelineCursor = Math.max(0, Math.min(state.pipeline.length - 1, Number(index)));
+  const records = pipelineRecords();
+  state.pipelineCursor = Math.max(0, Math.min(records.length - 1, Number(index)));
   toast(`Viewing pipeline step ${state.pipelineCursor + 1}`);
   render();
 }
 
 function stepPipeline(delta) {
-  setPipelineCursor((state.pipelineCursor ?? state.pipeline.length - 1) + delta);
+  const records = pipelineRecords();
+  setPipelineCursor((state.pipelineCursor ?? records.length - 1) + delta);
 }
 
 function replayPipeline() {
-  addHistory(`Replayed ${state.pipeline.length} recorded actions on ${selectedSample().name}`);
-  toast("Pipeline replay recorded");
+  const records = pipelineRecords();
+  const target = state.samples.find(sample => sample.id === state.report.replayTargetSample) || state.samples.find(sample => sample.id !== state.selectedSample) || selectedSample();
+  const source = selectedSample();
+  state.populations.forEach(pop => {
+    const ratio = source.events ? populationCount(pop, source) / source.events : 0;
+    setPopulationCount(pop, target.events * ratio, target);
+  });
+  const preview = {
+    sampleId: target.id,
+    sampleName: target.name,
+    actions: records.length,
+    gates: records.filter(record => pipelineRecordKind(record) === "gate").length || state.gates.length,
+    transforms: records.filter(record => ["transform", "compensation", "unmixing"].includes(pipelineRecordKind(record))).length,
+    clusters: records.filter(record => pipelineRecordKind(record) === "clustering").length,
+    replayedAt: new Date().toISOString()
+  };
+  target.replayPreview = preview;
+  state.report.replayPreview = preview;
+  state.report.replayStatus = `replayed on ${target.name}`;
+  addHistory(`Replayed ${records.length} structured actions on ${target.name}`, {
+    kind: "pipeline",
+    sampleId: target.id,
+    payload: preview,
+    after: `${preview.gates} gate-related records, ${preview.transforms} transform records, ${preview.clusters} cluster records`
+  });
+  toast("Pipeline replay preview created");
   render();
 }
 
 function generateReport() {
-  const html = `<!doctype html><title>CytoStudio report</title><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;padding:32px;line-height:1.4}h1{color:#063}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:6px;text-align:left}</style><h1>CytoStudio Experiment Report</h1><p>Sample: ${selectedSample().name}</p><p>Population: ${population(state.selectedPopulation).name}</p><h2>Gating hierarchy</h2><ul>${state.populations.map(pop => `<li>${pop.name}: ${fmt(populationCount(pop))} events</li>`).join("")}</ul><h2>Pipeline</h2><ol>${state.pipeline.map(step => `<li>${step}</li>`).join("")}</ol>`;
+  const table = statisticsTableRows();
+  const records = pipelineRecords();
+  const html = `<!doctype html><title>CytoStudio report</title><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;padding:32px;line-height:1.4}h1{color:#063}table{border-collapse:collapse;width:100%;margin:12px 0}td,th{border:1px solid #ccc;padding:6px;text-align:left}code{background:#eef;padding:2px 4px}</style><h1>CytoStudio Experiment Report</h1><p>Sample: ${selectedSample().name}</p><p>Population: ${population(state.selectedPopulation).name}</p><p>Replay status: ${state.report.replayStatus}</p><h2>Gating hierarchy</h2><ul>${state.populations.map(pop => `<li>${pop.name}: ${fmt(populationCount(pop))} events</li>`).join("")}</ul><h2>Statistics table</h2><table><thead><tr>${table.headers.map(header => `<th>${csvEscape(header)}</th>`).join("")}</tr></thead><tbody>${table.rows.map(row => `<tr>${row.map(cell => `<td>${csvEscape(cell)}</td>`).join("")}</tr>`).join("")}</tbody></table><h2>Structured pipeline</h2><ol>${records.map(record => `<li><code>${pipelineRecordKind(record)}</code> ${csvEscape(pipelineRecordLabel(record))}</li>`).join("")}</ol>`;
   downloadText("cytostudio-report.html", html, "text/html");
   state.report.status = "PDF proof generated";
   state.report.lastExport = "report";
-  addHistory("Generated experiment report proof with hierarchy, plots, statistics, and pipeline");
+  addHistory("Generated experiment report proof with hierarchy, statistics, and structured pipeline", { kind: "export", payload: { rows: table.rows.length, records: records.length } });
   render();
 }
 
 function exportPipelineJSON() {
+  const records = pipelineRecords();
   const payload = {
     app: "CytoStudio",
+    format: "cytostudio.pipeline.v2",
     sample: selectedSample().name,
     selectedPopulation: population(state.selectedPopulation).name,
     actions: state.pipeline,
+    records,
+    replayPreview: state.report.replayPreview,
     gates: state.gates,
     populations: state.populations,
     plots: state.plots
   };
   downloadText("cytostudio-pipeline.json", JSON.stringify(payload, null, 2), "application/json");
   state.report.lastExport = "pipeline JSON";
-  addHistory("Exported replayable pipeline JSON");
+  addHistory("Exported replayable structured pipeline JSON", { kind: "export", payload: { records: records.length } });
   render();
 }
 
 function exportGatingML() {
-  const gates = state.gates.map(gate => `<gating:Gate id="${gate.id}" population="${gate.population}" type="${gate.type}" />`).join("");
-  downloadText("cytostudio-gates.gatingml", `<gating:Gating-ML xmlns:gating="http://www.isac-net.org/std/Gating-ML/v2.0/gating">${gates}</gating:Gating-ML>`, "application/xml");
+  const gates = state.gates.map(gate => {
+    const p = plot(gate.plot);
+    const dimensions = [p?.x, p?.y].filter(Boolean).map(id => `<gating:dimension><data-type:fcs-dimension data-type:name="${statParamLabel(id)}"/></gating:dimension>`).join("");
+    const geometry = gate.points
+      ? `<gating:custom_info>${gate.points.map(point => point.join(",")).join(" ")}</gating:custom_info>`
+      : `<gating:custom_info>${JSON.stringify(Object.fromEntries(Object.entries(gate).filter(([key]) => ["x", "y", "x1", "x2", "y1", "y2"].includes(key))))}</gating:custom_info>`;
+    return `<gating:PolygonGate gating:id="${gate.id}" cytostudio:population="${gate.population}" cytostudio:type="${gate.type}">${dimensions}${geometry}</gating:PolygonGate>`;
+  }).join("");
+  downloadText("cytostudio-gates.gatingml", `<gating:Gating-ML xmlns:gating="http://www.isac-net.org/std/Gating-ML/v2.0/gating" xmlns:data-type="http://www.isac-net.org/std/Gating-ML/v2.0/datatypes" xmlns:cytostudio="https://local.cytostudio/prototype">${gates}</gating:Gating-ML>`, "application/xml");
   state.report.lastExport = "GatingML";
-  addHistory("Exported GatingML gate definition proof");
+  addHistory("Exported GatingML gate definition proof with dimensions and geometry", { kind: "export", payload: { gates: state.gates.length } });
   render();
 }
 
@@ -3009,7 +3133,9 @@ function workspacePayload() {
     templates: state.templates,
     figure: state.figure,
     settings: { theme: state.theme, compensation: state.compensation, spectral: state.spectral },
-    pipeline: state.pipeline
+    pipeline: state.pipeline,
+    pipelineRecords: pipelineRecords(),
+    replayPreview: state.report.replayPreview
   };
 }
 
@@ -3037,6 +3163,9 @@ function openAutosavedWorkspace() {
   }
   const payload = JSON.parse(raw);
   state.workspace.name = payload.name || state.workspace.name;
+  if (Array.isArray(payload.pipelineRecords)) state.pipelineRecords = payload.pipelineRecords;
+  if (Array.isArray(payload.pipeline)) state.pipeline = payload.pipeline;
+  if (payload.replayPreview) state.report.replayPreview = payload.replayPreview;
   state.workspace.shareStatus = "autosave recovered";
   state.workspace.lastSaved = "recovered";
   addHistory("Recovered workspace from local autosave");
@@ -3045,7 +3174,7 @@ function openAutosavedWorkspace() {
 
 function shareWorkspacePackage() {
   const payload = workspacePayload();
-  payload.package = { includesRawData: false, rawDataPolicy: "reference-by-path-and-content-hash", changeLog: state.pipeline.slice(-12) };
+  payload.package = { includesRawData: false, rawDataPolicy: "reference-by-path-and-content-hash", changeLog: pipelineRecords().slice(-12) };
   downloadText("cytostudio-share-package.json", JSON.stringify(payload, null, 2), "application/json");
   state.workspace.shareStatus = "share package exported";
   addHistory("Exported self-contained share package without raw FCS duplication");
@@ -3142,7 +3271,8 @@ function exportCompliancePackage() {
     locked: state.clinical.locked,
     signed: state.clinical.signed,
     retentionYears: state.clinical.retentionYears,
-    auditTrail: state.pipeline
+    auditTrail: state.pipeline,
+    structuredAuditTrail: pipelineRecords()
   };
   downloadText("cytostudio-compliance-export.json", JSON.stringify(payload, null, 2), "application/json");
   state.clinical.exportStatus = "exported";
@@ -3352,6 +3482,13 @@ function bindEvents() {
     if (clinicalField) {
       state.clinical[clinicalField] = event.target.type === "number" ? Number(event.target.value) : event.target.value;
       addHistory(`Updated clinical ${clinicalField} setting`);
+      render();
+      return;
+    }
+    const reportField = event.target.dataset.reportField;
+    if (reportField) {
+      state.report[reportField] = event.target.value;
+      addHistory(`Updated report ${reportField} to ${event.target.value}`, { kind: "pipeline", payload: { field: reportField, value: event.target.value } });
       render();
       return;
     }

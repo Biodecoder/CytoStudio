@@ -748,7 +748,7 @@ table.data-table {
 }
 .pipeline-layout {
   display: grid;
-  grid-template-columns: minmax(320px, 1.2fr) minmax(260px, 0.8fr);
+  grid-template-columns: minmax(260px, 1.1fr) minmax(220px, 0.9fr) minmax(210px, 0.8fr);
   gap: 14px;
 }
 .timeline-list {
@@ -777,6 +777,15 @@ table.data-table {
 .timeline-list strong {
   color: var(--accent);
 }
+.timeline-list em {
+  display: block;
+  margin-top: 2px;
+  color: var(--accent-2);
+  font-size: 11px;
+  font-style: normal;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
 .report-preview {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -789,6 +798,15 @@ table.data-table {
 .report-preview p {
   color: var(--muted);
   margin-bottom: 10px;
+}
+.pipeline-payload {
+  max-height: 180px;
+  overflow: auto;
+  margin-top: 10px;
+  white-space: pre-wrap;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
 }
 .coach-marks {
   position: absolute;
