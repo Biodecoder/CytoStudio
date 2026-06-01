@@ -381,6 +381,19 @@ canvas.plot-canvas, svg.gate-layer {
   border-radius: 6px;
   padding: 6px 7px;
 }
+.color-field {
+  grid-template-columns: 86px 42px 1fr;
+}
+.color-field input[type="color"] {
+  width: 42px;
+  height: 32px;
+  padding: 2px;
+}
+.color-field strong {
+  min-width: 0;
+  font-size: 11px;
+  color: var(--muted);
+}
 .stats-list, .warnings, .pipeline-list, .report-list { display: grid; gap: 6px; }
 .stat-row, .warning-row, .pipeline-item, .kv-row {
   display: grid;

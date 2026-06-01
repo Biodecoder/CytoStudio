@@ -267,6 +267,31 @@ function population(id) {
   return state.populations.find(p => p.id === id);
 }
 
+function selectedGate() {
+  return state.gates.find(gate => gate.id === state.selectedGate) || state.gates.find(gate => gate.population === state.selectedPopulation);
+}
+
+function escapeHTML(value) {
+  return String(value ?? "").replace(/[&<>"']/g, char => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  }[char]));
+}
+
+function colorToRGBA(color, alpha = 0.14) {
+  const hex = String(color || "").trim();
+  const match = hex.match(/^#?([0-9a-f]{6})$/i);
+  if (!match) return `rgba(49,230,208,${alpha})`;
+  const value = match[1];
+  const r = parseInt(value.slice(0, 2), 16);
+  const g = parseInt(value.slice(2, 4), 16);
+  const b = parseInt(value.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 function selectedSample() {
   return state.samples.find(s => s.id === state.selectedSample);
 }
@@ -611,30 +636,33 @@ function gateSVG(plotId, sample = selectedSample()) {
   return state.gates.filter(g => g.plot === plotId).map(gate => {
     const g = effectiveGateForSample(gate, sample);
     const selected = gate.id === state.selectedGate || gate.population === state.selectedPopulation;
-    const handles = selected ? gateHandlesSVG(gate) : "";
-    const attrs = `data-gate-id="${gate.id}" data-gate-action="move"`;
+    const pop = population(gate.population);
+    const color = pop?.color || "#31e6d0";
+    const shapeStyle = `style="stroke:${color};fill:${colorToRGBA(color, selected ? 0.20 : 0.12)}"`;
+    const handles = selected ? gateHandlesSVG(gate, color) : "";
+    const attrs = `data-gate-id="${gate.id}" data-gate-action="move" ${shapeStyle}`;
     if (g.type === "rectangle") {
-      return `<rect class="gate-shape${selected ? " selected" : ""}" ${attrs} x="${g.x1 * 100}%" y="${g.y1 * 100}%" width="${(g.x2 - g.x1) * 100}%" height="${(g.y2 - g.y1) * 100}%"></rect><text class="gate-label" x="${(g.x1 + 0.02) * 100}%" y="${(g.y1 + 0.08) * 100}%">${g.label}</text>${handles}`;
+      return `<rect class="gate-shape${selected ? " selected" : ""}" ${attrs} x="${g.x1 * 100}%" y="${g.y1 * 100}%" width="${(g.x2 - g.x1) * 100}%" height="${(g.y2 - g.y1) * 100}%"></rect><text class="gate-label" x="${(g.x1 + 0.02) * 100}%" y="${(g.y1 + 0.08) * 100}%">${escapeHTML(g.label)}</text>${handles}`;
     }
     if (g.type === "ellipse") {
-      return `<ellipse class="gate-shape${selected ? " selected" : ""}" ${attrs} cx="${g.cx * 100}%" cy="${g.cy * 100}%" rx="${g.rx * 100}%" ry="${g.ry * 100}%"></ellipse><text class="gate-label" x="${(g.cx - g.rx * 0.5) * 100}%" y="${g.cy * 100}%">${g.label}</text>${handles}`;
+      return `<ellipse class="gate-shape${selected ? " selected" : ""}" ${attrs} cx="${g.cx * 100}%" cy="${g.cy * 100}%" rx="${g.rx * 100}%" ry="${g.ry * 100}%"></ellipse><text class="gate-label" x="${(g.cx - g.rx * 0.5) * 100}%" y="${g.cy * 100}%">${escapeHTML(g.label)}</text>${handles}`;
     }
     if (g.type === "polygon" || g.type === "lasso") {
       const pts = g.points.map(p => `${p[0] * 100},${p[1] * 100}`).join(" ");
-      return `<polygon class="gate-shape${selected ? " selected" : ""}" ${attrs} points="${pts}" vector-effect="non-scaling-stroke"></polygon><text class="gate-label" x="22%" y="32%">${g.label}</text>${handles}`;
+      return `<polygon class="gate-shape${selected ? " selected" : ""}" ${attrs} points="${pts}" vector-effect="non-scaling-stroke"></polygon><text class="gate-label" x="22%" y="32%">${escapeHTML(g.label)}</text>${handles}`;
     }
     if (g.type === "quadrant") {
-      return `<line class="gate-shape${selected ? " selected" : ""}" ${attrs} x1="${g.x * 100}%" y1="11%" x2="${g.x * 100}%" y2="88%"></line><line class="gate-shape${selected ? " selected" : ""}" ${attrs} x1="12%" y1="${g.y * 100}%" x2="88%" y2="${g.y * 100}%"></line><text class="gate-label" x="70%" y="73%">${g.label}</text>${handles}`;
+      return `<line class="gate-shape${selected ? " selected" : ""}" ${attrs} x1="${g.x * 100}%" y1="11%" x2="${g.x * 100}%" y2="88%"></line><line class="gate-shape${selected ? " selected" : ""}" ${attrs} x1="12%" y1="${g.y * 100}%" x2="88%" y2="${g.y * 100}%"></line><text class="gate-label" x="70%" y="73%">${escapeHTML(g.label)}</text>${handles}`;
     }
     if (g.type === "interval") {
-      return `<rect class="gate-shape${selected ? " selected" : ""}" ${attrs} x="${g.x1 * 100}%" y="12%" width="${(g.x2 - g.x1) * 100}%" height="76%"></rect><text class="gate-label" x="${(g.x1 + 0.02) * 100}%" y="22%">${g.label}</text>${handles}`;
+      return `<rect class="gate-shape${selected ? " selected" : ""}" ${attrs} x="${g.x1 * 100}%" y="12%" width="${(g.x2 - g.x1) * 100}%" height="76%"></rect><text class="gate-label" x="${(g.x1 + 0.02) * 100}%" y="22%">${escapeHTML(g.label)}</text>${handles}`;
     }
     return "";
   }).join("");
 }
 
-function gateHandlesSVG(gate) {
-  const handle = (x, y, action) => `<circle class="gate-handle" data-gate-id="${gate.id}" data-gate-action="${action}" cx="${x * 100}%" cy="${y * 100}%" r="1.8"></circle>`;
+function gateHandlesSVG(gate, color = "#31e6d0") {
+  const handle = (x, y, action) => `<circle class="gate-handle" data-gate-id="${gate.id}" data-gate-action="${action}" style="fill:${color}" cx="${x * 100}%" cy="${y * 100}%" r="1.8"></circle>`;
   if (gate.type === "rectangle") return [["nw", gate.x1, gate.y1], ["ne", gate.x2, gate.y1], ["sw", gate.x1, gate.y2], ["se", gate.x2, gate.y2]].map(([a, x, y]) => handle(x, y, a)).join("");
   if (gate.type === "ellipse") return handle(gate.cx, gate.cy, "center") + handle(gate.cx + gate.rx, gate.cy, "rx") + handle(gate.cx, gate.cy + gate.ry, "ry");
   if (gate.type === "polygon" || gate.type === "lasso") return gate.points.map((point, index) => handle(point[0], point[1], `vertex-${index}`)).join("");
@@ -1043,6 +1071,8 @@ function renderInspector() {
   const pop = population(state.selectedPopulation);
   const parent = population(pop.parent) || pop;
   const sample = selectedSample();
+  const gate = selectedGate();
+  const gatePop = gate ? population(gate.population) : null;
   const popEvents = populationCount(pop);
   const parentEvents = populationCount(parent);
   const totalEvents = populationCount("all");
@@ -1061,6 +1091,15 @@ function renderInspector() {
       ${p.y ? transformControls("Y", p.scaleY, p.transformY) : ""}
       <div class="button-row"><button class="secondary" data-action="reset-scale">Reset scaling</button><button class="primary" data-action="create-gate">Create ${state.activeTool} gate</button></div>
     </div>
+    ${gate && gatePop ? `<div class="panel-block"><h3>Selected Gate</h3>
+      <label class="field"><span>Name</span><input value="${escapeHTML(gatePop.name)}" data-edit-gate="name"></label>
+      <label class="field color-field"><span>Color</span><input type="color" value="${gatePop.color}" data-edit-gate="color"><strong>${gatePop.color}</strong></label>
+      <div class="stats-list">
+        <div class="stat-row"><span>Tool</span><strong>${gate.type}</strong></div>
+        <div class="stat-row"><span>Bound plot</span><strong>${plot(gate.plot)?.title || gate.plot}</strong></div>
+        <div class="stat-row"><span>Parameters</span><strong>${statParamLabel(plot(gate.plot)?.x)} / ${plot(gate.plot)?.y ? statParamLabel(plot(gate.plot).y) : "Frequency"}</strong></div>
+      </div>
+    </div>` : ""}
     <div class="panel-block"><h3>Population Statistics</h3>
       <div class="stats-list">
         <div class="stat-row"><span>Population</span><strong style="color:${pop.color}">${pop.name}</strong></div>
@@ -2655,6 +2694,32 @@ function bindEvents() {
       addHistory(`Updated clinical ${clinicalField} setting`);
       render();
       return;
+    }
+    const gateField = event.target.dataset.editGate;
+    if (gateField) {
+      const gate = selectedGate();
+      const pop = gate ? population(gate.population) : null;
+      if (!gate || !pop) return;
+      if (gateField === "name") {
+        pop.name = event.target.value.trim() || pop.name;
+        state.selectedPopulation = pop.id;
+        state.selectedGate = gate.id;
+        refreshGateLabels();
+        addHistory(`Renamed selected gate to ${pop.name}`);
+        toast("Gate renamed; labels and statistics updated");
+        render();
+        return;
+      }
+      if (gateField === "color") {
+        pop.color = event.target.value;
+        state.selectedPopulation = pop.id;
+        state.selectedGate = gate.id;
+        refreshGateLabels();
+        addHistory(`Recolored ${pop.name} gate to ${pop.color}`);
+        toast("Gate color updated");
+        render();
+        return;
+      }
     }
     const key = event.target.dataset.editPlot;
     if (!key) return;
