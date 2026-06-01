@@ -436,6 +436,7 @@ function renderSamples() {
   state.samples.filter(s => s.name.toLowerCase().includes(q)).forEach((sample, idx) => {
     const row = document.createElement("button");
     row.className = `row ${sample.id === state.selectedSample ? "active" : ""}`;
+    row.draggable = true;
     const parsedBadge = sample.parsed ? " · parsed FCS" : "";
     const templateBadge = sampleTemplateLabel(sample);
     row.innerHTML = `<span class="dot" style="background:${colors[idx % colors.length]}"></span><span>${sample.name}<br><small>${sample.group} · ${sample.metadata.instrument}${parsedBadge}</small></span><span class="count">${fmt(sample.events)}${templateBadge ? `<br><em class="${templateBadge.className}">${templateBadge.label}</em>` : ""}</span>`;
@@ -443,6 +444,18 @@ function renderSamples() {
       state.selectedSample = sample.id;
       addHistory(`Selected sample ${sample.name}`);
       render();
+    });
+    row.addEventListener("dragstart", e => e.dataTransfer.setData("text/cytostudio-sample", sample.id));
+    row.addEventListener("dragover", e => e.preventDefault());
+    row.addEventListener("drop", e => {
+      e.preventDefault();
+      const dragged = state.samples.find(item => item.id === e.dataTransfer.getData("text/cytostudio-sample"));
+      if (dragged && dragged.id !== sample.id) {
+        dragged.group = sample.group;
+        addHistory(`Assigned ${dragged.name} to sample group ${sample.group}`);
+        toast(`${dragged.name} moved to ${sample.group}`);
+        render();
+      }
     });
     host.appendChild(row);
   });
