@@ -955,6 +955,18 @@ table.data-table {
   outline: 2px solid #26c6bd;
   outline-offset: 2px;
 }
+.figure-resize-handle {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  background: #26c6bd;
+  box-shadow: 0 0 0 1px rgba(18,28,27,0.35);
+  cursor: nwse-resize;
+  z-index: 5;
+}
 .figure-plot strong {
   position: absolute;
   left: 8px;

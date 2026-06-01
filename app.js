@@ -211,6 +211,7 @@ let activeImportWorker = null;
 let activeImportReject = null;
 let activeGateDrag = null;
 let activeGateDraft = null;
+let activeFigureDrag = null;
 
 function defaultTransformSettings(parameter = null, events = []) {
   if (!parameter) return { cofactor: 150, width: 18, floor: 1 };
@@ -1623,11 +1624,11 @@ function figureSurface() {
   const fig = state.figure;
   const selected = fig.elements.find(element => element.id === fig.selectedElement) || fig.elements[0];
   return `<div class="surface figure-surface">
-    <div class="surface-card figure-toolbar"><h3>Publication Figure Layout</h3><p>Assemble live plot tiles, labels, arrows, and inset plots on a snapping page canvas. Tiles stay linked to the current gates and statistics.</p><div class="button-row"><button class="primary" data-action="export-figure-png">Export PNG</button><button class="secondary" data-action="export-figure-svg">Export SVG</button><button class="secondary" data-action="export-figure-tiff">Export TIFF</button><button class="secondary" data-action="export-figure-pdf">PDF proof</button><button class="secondary" data-action="save-figure-template">Save template</button></div></div>
+    <div class="surface-card figure-toolbar"><h3>Publication Figure Layout</h3><p>Assemble live plot tiles, labels, arrows, and inset plots on a snapping page canvas. Tiles stay linked to the current gates and statistics.</p><div class="button-row"><button class="primary" data-action="export-figure-png">Export PNG</button><button class="secondary" data-action="export-figure-svg">Export SVG</button><button class="secondary" data-action="export-figure-tiff">Export TIFF</button><button class="secondary" data-action="export-figure-pdf">PDF proof</button><button class="secondary" data-action="export-selected-plot">Export selected plot</button><button class="secondary" data-action="save-figure-template">Save template</button></div></div>
     <div class="figure-editor">
       <aside class="figure-tools surface-card"><h3>Elements</h3><div class="button-row"><button class="primary" data-action="add-figure-label">Text</button><button class="secondary" data-action="add-figure-arrow">Arrow</button><button class="secondary" data-action="add-figure-inset">Inset</button></div><div class="figure-layer-list">${fig.elements.map(element => `<button class="${element.id === fig.selectedElement ? "active" : ""}" data-action="select-figure-element" data-figure-element="${element.id}"><span>${element.label || element.type}</span><strong>${element.type}</strong></button>`).join("")}</div><h3>Appearance</h3><label class="field"><span>Font</span><input type="number" min="8" max="22" value="${fig.fontSize}" data-figure-field="fontSize"></label><label class="field"><span>Gate line</span><input type="number" min="0.5" max="4" step="0.1" value="${fig.lineWidth}" data-figure-field="lineWidth"></label><label class="field"><span>Ticks</span><input type="number" min="2" max="10" value="${fig.tickDensity}" data-figure-field="tickDensity"></label><label class="field"><span>Theme</span><select data-figure-field="theme"><option ${fig.theme === "journal" ? "selected" : ""}>journal</option><option ${fig.theme === "dark" ? "selected" : ""}>dark</option><option ${fig.theme === "poster" ? "selected" : ""}>poster</option></select></label><div class="button-row"><button class="secondary" data-action="align-figure-left">Align left</button><button class="secondary" data-action="distribute-figure">Distribute</button></div></aside>
       <div class="figure-page-wrap"><div class="figure-page" style="--figure-font:${fig.fontSize}px; --figure-line:${fig.lineWidth};">${fig.elements.map(figureElementHTML).join("")}<div class="snap-guide horizontal"></div><div class="snap-guide vertical"></div></div></div>
-      <aside class="figure-tools surface-card"><h3>Selected</h3><div class="stats-list"><div class="stat-row"><span>Element</span><strong>${selected.label || selected.type}</strong></div><div class="stat-row"><span>X / Y</span><strong>${Math.round(selected.x)} / ${Math.round(selected.y)}</strong></div><div class="stat-row"><span>W / H</span><strong>${Math.round(selected.w)} / ${Math.round(selected.h)}</strong></div><div class="stat-row"><span>Snap</span><strong>${fig.snap ? "on" : "off"}</strong></div><div class="stat-row"><span>Export</span><strong>${fig.exportStatus}</strong></div></div><div class="button-row"><button class="primary" data-action="nudge-figure">Nudge</button><button class="secondary" data-action="resize-figure">Resize</button><button class="secondary" data-action="toggle-snap">Snap</button></div></aside>
+      <aside class="figure-tools surface-card"><h3>Selected</h3><div class="stats-list"><div class="stat-row"><span>Element</span><strong>${selected.label || selected.type}</strong></div><div class="stat-row"><span>X / Y</span><strong>${Math.round(selected.x)} / ${Math.round(selected.y)}</strong></div><div class="stat-row"><span>W / H</span><strong>${Math.round(selected.w)} / ${Math.round(selected.h)}</strong></div><div class="stat-row"><span>Snap</span><strong>${fig.snap ? "on" : "off"}</strong></div><div class="stat-row"><span>Export</span><strong>${fig.exportStatus}</strong></div></div><div class="button-row"><button class="primary" data-action="nudge-figure">Nudge</button><button class="secondary" data-action="resize-figure">Resize</button><button class="secondary" data-action="toggle-snap">Snap</button><button class="secondary" data-action="export-selected-plot">Plot export</button></div></aside>
     </div>
   </div>`;
 }
@@ -1637,12 +1638,12 @@ function figureElementHTML(element) {
   const selected = element.id === state.figure.selectedElement ? " selected" : "";
   if (element.type === "plot") {
     const p = plot(element.plot);
-    return `<button class="figure-element figure-plot${selected}" data-action="select-figure-element" data-figure-element="${element.id}" style="${style}"><strong>${element.label}</strong><span>${p.title}</span><canvas data-figure-canvas="${element.id}"></canvas>${element.inset ? `<canvas class="figure-inset" data-figure-inset="${element.id}"></canvas>` : ""}</button>`;
+    return `<button class="figure-element figure-plot${selected}" data-action="select-figure-element" data-figure-element="${element.id}" style="${style}"><strong>${element.label}</strong><span>${p.title}</span><canvas data-figure-canvas="${element.id}"></canvas>${element.inset ? `<canvas class="figure-inset" data-figure-inset="${element.id}"></canvas>` : ""}${selected ? `<i class="figure-resize-handle" data-figure-resize="${element.id}"></i>` : ""}</button>`;
   }
   if (element.type === "arrow") {
-    return `<button class="figure-element figure-arrow${selected}" data-action="select-figure-element" data-figure-element="${element.id}" style="${style}"><span>${element.text}</span></button>`;
+    return `<button class="figure-element figure-arrow${selected}" data-action="select-figure-element" data-figure-element="${element.id}" style="${style}"><span>${element.text}</span>${selected ? `<i class="figure-resize-handle" data-figure-resize="${element.id}"></i>` : ""}</button>`;
   }
-  return `<button class="figure-element figure-text${selected}" data-action="select-figure-element" data-figure-element="${element.id}" style="${style}">${element.text}</button>`;
+  return `<button class="figure-element figure-text${selected}" data-action="select-figure-element" data-figure-element="${element.id}" style="${style}">${element.text}${selected ? `<i class="figure-resize-handle" data-figure-resize="${element.id}"></i>` : ""}</button>`;
 }
 
 function pipelineSurface() {
@@ -2776,6 +2777,56 @@ function resizeFigureElement() {
   render();
 }
 
+function snapFigureValue(value) {
+  const clamped = Math.max(0, Math.min(96, value));
+  return state.figure.snap ? Math.round(clamped / 2) * 2 : clamped;
+}
+
+function beginFigureDrag(event) {
+  const handle = event.target.closest("[data-figure-resize]");
+  const target = event.target.closest(".figure-element[data-figure-element]");
+  if (!target && !handle) return;
+  const elementId = handle?.dataset.figureResize || target?.dataset.figureElement;
+  const element = state.figure.elements.find(item => item.id === elementId);
+  const page = event.target.closest(".figure-page");
+  if (!element || !page) return;
+  event.preventDefault();
+  state.figure.selectedElement = element.id;
+  activeFigureDrag = {
+    element,
+    page,
+    mode: handle ? "resize" : "move",
+    startX: event.clientX,
+    startY: event.clientY,
+    origin: { x: element.x, y: element.y, w: element.w, h: element.h }
+  };
+}
+
+function continueFigureDrag(event) {
+  if (!activeFigureDrag) return;
+  event.preventDefault();
+  const page = document.querySelector(".figure-page") || activeFigureDrag.page;
+  const rect = page.getBoundingClientRect();
+  const dx = ((event.clientX - activeFigureDrag.startX) / Math.max(rect.width, 1)) * 100;
+  const dy = ((event.clientY - activeFigureDrag.startY) / Math.max(rect.height, 1)) * 100;
+  const element = activeFigureDrag.element;
+  if (activeFigureDrag.mode === "resize") {
+    element.w = Math.max(8, Math.min(94 - element.x, snapFigureValue(activeFigureDrag.origin.w + dx)));
+    element.h = Math.max(6, Math.min(94 - element.y, snapFigureValue(activeFigureDrag.origin.h + dy)));
+  } else {
+    element.x = snapFigureValue(activeFigureDrag.origin.x + dx);
+    element.y = snapFigureValue(activeFigureDrag.origin.y + dy);
+  }
+  renderView();
+}
+
+function endFigureDrag() {
+  if (!activeFigureDrag) return;
+  addHistory(`${activeFigureDrag.mode === "resize" ? "Resized" : "Moved"} figure element ${activeFigureDrag.element.label || activeFigureDrag.element.type}`);
+  activeFigureDrag = null;
+  render();
+}
+
 function alignFigureLeft() {
   const selected = selectedFigureElement();
   state.figure.elements.filter(element => element.type === "plot").forEach(element => {
@@ -2815,6 +2866,29 @@ function exportFigure(format) {
   state.figure.exportStatus = `${format.toUpperCase()} proof exported`;
   addHistory(`Exported figure ${format.toUpperCase()} proof with live linked tiles`);
   toast(`${format.toUpperCase()} export proof created`);
+  render();
+}
+
+function exportSelectedPlotPackage() {
+  const element = selectedFigureElement();
+  const targetPlot = plot(element.plot || state.selectedPlot);
+  if (!targetPlot) return;
+  const payload = {
+    plot: targetPlot,
+    population: population(targetPlot.population || state.selectedPopulation)?.name,
+    sample: selectedSample().name,
+    figureStyle: {
+      fontSize: state.figure.fontSize,
+      lineWidth: state.figure.lineWidth,
+      tickDensity: state.figure.tickDensity,
+      theme: state.figure.theme
+    },
+    gateLabels: state.gates.filter(gate => gate.plot === targetPlot.id).map(gate => gate.label)
+  };
+  downloadText(`cytostudio-${targetPlot.id}-plot-package.json`, JSON.stringify(payload, null, 2), "application/json");
+  state.figure.exportStatus = `Plot ${targetPlot.title} package exported`;
+  addHistory(`Exported selected plot package for ${targetPlot.title}`);
+  toast("Selected plot package exported");
   render();
 }
 
@@ -3421,6 +3495,7 @@ function bindEvents() {
     if (action === "export-figure-svg") exportFigure("svg");
     if (action === "export-figure-tiff") exportFigure("tiff");
     if (action === "export-figure-pdf") exportFigure("pdf");
+    if (action === "export-selected-plot") exportSelectedPlotPackage();
     if (action === "select-pipeline-step") setPipelineCursor(actionTarget.dataset.step);
     if (action === "pipeline-step-back") stepPipeline(-1);
     if (action === "pipeline-step-forward") stepPipeline(1);
@@ -3554,12 +3629,18 @@ function bindEvents() {
   window.addEventListener("resize", () => requestAnimationFrame(drawAllPlots));
   if (window.PointerEvent) {
     document.getElementById("canvasRegion").addEventListener("pointerdown", beginGateDrag);
+    document.getElementById("viewHost").addEventListener("pointerdown", beginFigureDrag);
     document.addEventListener("pointermove", continueGateDrag);
+    document.addEventListener("pointermove", continueFigureDrag);
     document.addEventListener("pointerup", endGateDrag);
+    document.addEventListener("pointerup", endFigureDrag);
   } else {
     document.getElementById("canvasRegion").addEventListener("mousedown", beginGateDrag);
+    document.getElementById("viewHost").addEventListener("mousedown", beginFigureDrag);
     document.addEventListener("mousemove", continueGateDrag);
+    document.addEventListener("mousemove", continueFigureDrag);
     document.addEventListener("mouseup", endGateDrag);
+    document.addEventListener("mouseup", endFigureDrag);
   }
   document.getElementById("canvasRegion").addEventListener("dblclick", event => {
     if (activeGateDraft?.type !== "polygon") return;
